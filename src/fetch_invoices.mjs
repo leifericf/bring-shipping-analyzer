@@ -1,6 +1,6 @@
 import fs from 'fs';
 import { join } from 'path';
-import { loadEnv, getOutputDir, getAuthHeaders, sleep, fetchWithRetry, csvRow } from './lib.mjs';
+import { loadEnv, getOutputDir, getAuthHeaders, sleep, fetchWithRetry, httpsGet, csvRow } from './lib.mjs';
 
 const env = loadEnv();
 
@@ -23,27 +23,24 @@ async function fetchJson(url) {
   return response.json();
 }
 
+// Note: Mybring report/download endpoints reject Node.js fetch() (undici) with
+// 406 Not Acceptable, but work fine with node:https. We use httpsGet() for these.
+
 async function fetchXml(url) {
-  const response = await fetchWithRetry(url, {
-    headers: { ...AUTH_HEADERS, 'Accept': 'application/xml' },
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`API error ${response.status}: ${text}`);
+  const result = await httpsGet(url, { ...AUTH_HEADERS, 'Accept': 'application/xml' });
+  if (result.status !== 200) {
+    throw new Error(`API error ${result.status}: ${result.body.toString('utf8')}`);
   }
-  return response.text();
+  return result.body.toString('utf8');
 }
 
 async function downloadPdf(invoiceNumber, outputPath) {
   const url = `${INVOICE_PDF_URL}/${CUSTOMER_NUMBER}/${invoiceNumber}.pdf`;
-  const response = await fetchWithRetry(url, {
-    headers: AUTH_HEADERS,
-  });
-  if (!response.ok) {
-    throw new Error(`PDF download failed: ${response.status}`);
+  const result = await httpsGet(url, AUTH_HEADERS);
+  if (result.status !== 200) {
+    throw new Error(`PDF download failed: ${result.status}`);
   }
-  const buffer = Buffer.from(await response.arrayBuffer());
-  fs.writeFileSync(outputPath, buffer);
+  fs.writeFileSync(outputPath, result.body);
 }
 
 async function getInvoices() {

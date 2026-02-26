@@ -1,4 +1,5 @@
 import fs from 'fs';
+import https from 'https';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -115,6 +116,33 @@ export async function fetchWithRetry(url, options = {}, retries = 3) {
       throw error;
     }
   }
+}
+
+/**
+ * Make an HTTPS GET request using node:https.
+ * Some Mybring API endpoints (e.g. XML report downloads) reject Node.js
+ * fetch()/undici requests with 406, but work fine with node:https.
+ * This helper provides a compatible alternative for those endpoints.
+ */
+export function httpsGet(url, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const req = https.request({
+      hostname: parsed.hostname,
+      path: parsed.pathname + parsed.search,
+      method: 'GET',
+      headers,
+    }, (res) => {
+      const chunks = [];
+      res.on('data', chunk => chunks.push(chunk));
+      res.on('end', () => {
+        const body = Buffer.concat(chunks);
+        resolve({ status: res.statusCode, headers: res.headers, body });
+      });
+    });
+    req.on('error', reject);
+    req.end();
+  });
 }
 
 /**
