@@ -12,17 +12,20 @@ This project fetches shipping rates and invoice data from the Bring API to help 
 bring-shipping-rates/
 ├── README.md               # This file
 ├── package.json            # Project metadata and npm scripts
-├── config.json             # Business configuration (destinations, services, weights, etc.)
-├── .env.example            # Environment template (copy to .env)
-├── .env                    # Your credentials (git-ignored)
+├── config.json             # Default business configuration (destinations, services, weights)
+├── .env.example            # Environment template (for CLI usage)
+├── .env                    # Your credentials for CLI usage (git-ignored)
 ├── src/
 │   ├── lib.mjs             # Shared utilities (env, CSV, fetch helpers)
 │   ├── config.mjs          # Config loader and validation
 │   ├── db.mjs              # SQLite database layer
-│   ├── run.mjs             # Entry point - runs all scripts
+│   ├── server.mjs          # Web UI (Express server)
+│   ├── run.mjs             # Pipeline entry point - runs all scripts
 │   ├── fetch_rates.mjs     # Fetch shipping rates from Bring API
 │   ├── fetch_invoices.mjs  # Fetch invoice data and PDFs from Bring API
-│   └── analyze.mjs         # Analyze data and generate recommendations
+│   ├── analyze.mjs         # Analyze data and generate recommendations
+│   ├── views/              # EJS templates for the web UI
+│   └── public/             # Static CSS for the web UI
 └── data/                   # Output files (git-ignored)
     ├── bring.db            # SQLite database (all run history)
     └── <YYYY-MM-DD>_<customer>/    # One folder per day per customer
@@ -89,9 +92,26 @@ Edit `config.json` to customize for your needs. For example, to add a new destin
 
 ## Usage
 
-### Quick Start
+### Web UI (recommended)
 
-Run the full pipeline:
+Start the web server:
+
+```bash
+npm run server
+```
+
+Open http://localhost:3000 in your browser. From the web UI you can:
+
+1. **Create accounts** — add API credentials for one or more Bring/Mybring users
+2. **Edit configuration** — customize destinations, services, weight tiers, and analysis settings per account
+3. **Start runs** — fetch rates and invoices with one click (runs in background)
+4. **View results** — see the analysis report rendered as a web page
+
+The web UI stores credentials in the local SQLite database. No `.env` file is needed when using the web UI.
+
+### CLI
+
+Run the full pipeline from the command line (uses `.env` for credentials):
 
 ```bash
 npm start
@@ -115,7 +135,7 @@ npm run fetch:invoices    # Fetch invoices and PDFs
 npm run analyze           # Generate recommendations
 ```
 
-When run individually, scripts still write to CSV files. The database is only populated when using the full pipeline (`npm start`).
+When run individually, scripts still write to CSV files. The database is only populated when using the full pipeline (`npm start`) or the web UI.
 
 ### Script Details
 
@@ -153,13 +173,14 @@ All run data is stored in a SQLite database at `data/bring.db`. This enables:
 
 - **Historical comparison** — compare rates across different dates
 - **Querying** — use any SQLite tool to explore your data
-- **Future web UI** — the database is designed to support a visual interface
+- **Web UI** — powers the account management, run history, and results views
 
 The database contains these tables:
 
 | Table | Purpose |
 |-------|---------|
-| `runs` | Run metadata (date, config snapshot, status) |
+| `accounts` | Bring API credentials and per-account config |
+| `runs` | Run metadata (date, account, config snapshot, status) |
 | `shipping_rates` | All fetched shipping rates per run |
 | `zones` | Postal code to zone mappings per run |
 | `invoice_line_items` | Invoice line items per run |
