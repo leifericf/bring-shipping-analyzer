@@ -65,6 +65,8 @@ All data is stored in a local SQLite database at `data/bring.db`. You can query 
 sqlite3 data/bring.db "SELECT id, created_at, status FROM runs"
 ```
 
+The database is not backed up automatically. If you want to keep a copy, just copy the `data/bring.db` file somewhere safe. That said, the app is designed around ephemeral runs — you can always re-fetch rates and invoices from the Bring API, so losing the database is not a big deal.
+
 ## Notes
 
 - **Norway zone system**: Bring uses 7 shipping zones based on distance from origin. Zone numbers can differ per service for the same postal code.
