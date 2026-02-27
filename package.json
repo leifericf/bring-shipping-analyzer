@@ -11,5 +11,8 @@
     "fetch:rates": "node src/fetch_rates.mjs",
     "fetch:invoices": "node src/fetch_invoices.mjs",
     "analyze": "node src/analyze.mjs"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.6.2"
   }
 }
