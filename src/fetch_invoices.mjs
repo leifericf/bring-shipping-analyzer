@@ -1,12 +1,14 @@
 import fs from 'fs';
 import { join } from 'path';
 import { loadEnv, getOutputDir, getAuthHeaders, sleep, fetchWithRetry, httpsGet, csvRow } from './lib.mjs';
+import { insertInvoiceLineItems, closeDb } from './db.mjs';
 
 const env = loadEnv();
 
 const CUSTOMER_NUMBER = env.BRING_CUSTOMER_NUMBER;
 const OUTPUT_DIR = getOutputDir(CUSTOMER_NUMBER);
 const AUTH_HEADERS = getAuthHeaders(env);
+const RUN_ID = process.env.RUN_ID ? Number(process.env.RUN_ID) : null;
 
 const INVOICES_URL = 'https://www.mybring.com/invoicearchive/api/invoices';
 const INVOICE_PDF_URL = 'https://www.mybring.com/invoicearchive/pdf';
@@ -177,6 +179,12 @@ async function main() {
     ])
   );
   fs.writeFileSync(join(OUTPUT_DIR, 'invoice_line_items.csv'), [csvHeader, ...csvRows].join('\n'));
+
+  // Write to database if we have a run ID
+  if (RUN_ID) {
+    insertInvoiceLineItems(RUN_ID, allLineItems);
+    closeDb();
+  }
 
   console.log(`\nSaved ${allLineItems.length} line items to ${OUTPUT_DIR}/invoice_line_items.csv`);
 }
