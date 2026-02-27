@@ -36,10 +36,28 @@ export function closeDb() {
  * Create tables if they don't exist.
  */
 function initSchema() {
+  // Migrate: add account_id column to runs if it doesn't exist (for existing DBs)
+  const runsColumns = _db.prepare("PRAGMA table_info(runs)").all();
+  if (runsColumns.length > 0 && !runsColumns.find(c => c.name === 'account_id')) {
+    _db.exec('ALTER TABLE runs ADD COLUMN account_id INTEGER REFERENCES accounts(id)');
+  }
+
   _db.exec(`
+    CREATE TABLE IF NOT EXISTS accounts (
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      name               TEXT NOT NULL,
+      api_uid            TEXT NOT NULL,
+      api_key            TEXT NOT NULL,
+      customer_number    TEXT NOT NULL,
+      origin_postal_code TEXT NOT NULL DEFAULT '0174',
+      config             TEXT NOT NULL,
+      created_at         TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS runs (
       id                 INTEGER PRIMARY KEY AUTOINCREMENT,
       created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+      account_id         INTEGER REFERENCES accounts(id),
       customer_number    TEXT NOT NULL,
       origin_postal_code TEXT NOT NULL,
       output_dir         TEXT,
@@ -101,26 +119,90 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_zones_run ON zones(run_id);
     CREATE INDEX IF NOT EXISTS idx_invoice_line_items_run ON invoice_line_items(run_id);
     CREATE INDEX IF NOT EXISTS idx_analysis_results_run ON analysis_results(run_id);
+    CREATE INDEX IF NOT EXISTS idx_runs_account ON runs(account_id);
   `);
+}
+
+// ---------------------------------------------------------------------------
+// Account helpers
+// ---------------------------------------------------------------------------
+
+export function getAllAccounts() {
+  const db = getDb();
+  return db.prepare('SELECT * FROM accounts ORDER BY name').all();
+}
+
+export function getAccount(id) {
+  const db = getDb();
+  return db.prepare('SELECT * FROM accounts WHERE id = ?').get(id);
+}
+
+export function createAccount(name, apiUid, apiKey, customerNumber, originPostalCode, config) {
+  const db = getDb();
+  const stmt = db.prepare(`
+    INSERT INTO accounts (name, api_uid, api_key, customer_number, origin_postal_code, config)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  const result = stmt.run(name, apiUid, apiKey, customerNumber, originPostalCode, JSON.stringify(config));
+  return result.lastInsertRowid;
+}
+
+export function updateAccount(id, name, apiUid, apiKey, customerNumber, originPostalCode) {
+  const db = getDb();
+  db.prepare(`
+    UPDATE accounts SET name = ?, api_uid = ?, api_key = ?, customer_number = ?, origin_postal_code = ?
+    WHERE id = ?
+  `).run(name, apiUid, apiKey, customerNumber, originPostalCode, id);
+}
+
+export function updateAccountConfig(id, config) {
+  const db = getDb();
+  db.prepare('UPDATE accounts SET config = ? WHERE id = ?').run(JSON.stringify(config), id);
+}
+
+export function deleteAccount(id) {
+  const db = getDb();
+  db.prepare('DELETE FROM accounts WHERE id = ?').run(id);
 }
 
 // ---------------------------------------------------------------------------
 // Run helpers
 // ---------------------------------------------------------------------------
 
-export function createRun(customerNumber, originPostalCode, outputDir, configSnapshot) {
+export function createRun(customerNumber, originPostalCode, outputDir, configSnapshot, accountId = null) {
   const db = getDb();
   const stmt = db.prepare(`
-    INSERT INTO runs (customer_number, origin_postal_code, output_dir, config_snapshot, status)
-    VALUES (?, ?, ?, ?, 'pending')
+    INSERT INTO runs (account_id, customer_number, origin_postal_code, output_dir, config_snapshot, status)
+    VALUES (?, ?, ?, ?, ?, 'pending')
   `);
-  const result = stmt.run(customerNumber, originPostalCode, outputDir, JSON.stringify(configSnapshot));
+  const result = stmt.run(accountId, customerNumber, originPostalCode, outputDir, JSON.stringify(configSnapshot));
   return result.lastInsertRowid;
 }
 
 export function updateRunStatus(runId, status) {
   const db = getDb();
   db.prepare('UPDATE runs SET status = ? WHERE id = ?').run(status, runId);
+}
+
+export function getRun(id) {
+  const db = getDb();
+  return db.prepare('SELECT * FROM runs WHERE id = ?').get(id);
+}
+
+export function getRunsForAccount(accountId) {
+  const db = getDb();
+  return db.prepare('SELECT * FROM runs WHERE account_id = ? ORDER BY created_at DESC').all(accountId);
+}
+
+export function getRecentRuns(limit = 20) {
+  const db = getDb();
+  return db.prepare(`
+    SELECT r.*, a.name as account_name
+    FROM runs r
+    LEFT JOIN accounts a ON r.account_id = a.id
+    ORDER BY r.created_at DESC
+    LIMIT ?
+  `).all(limit);
 }
 
 // ---------------------------------------------------------------------------
@@ -185,6 +267,11 @@ export function insertInvoiceLineItems(runId, lineItems) {
 export function insertAnalysisResult(runId, markdown) {
   const db = getDb();
   db.prepare('INSERT INTO analysis_results (run_id, results_markdown) VALUES (?, ?)').run(runId, markdown);
+}
+
+export function getAnalysisResult(runId) {
+  const db = getDb();
+  return db.prepare('SELECT results_markdown FROM analysis_results WHERE run_id = ? ORDER BY created_at DESC LIMIT 1').get(runId);
 }
 
 /**
