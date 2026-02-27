@@ -165,6 +165,7 @@ Generated: ${new Date().toISOString()}
     'IS': 'Iceland',
     'GL': 'Greenland',
     'FO': 'Faroe Islands',
+    'JP': 'Japan',
   };
 
   const intlWeights = ['250', '750', '1000', '5000', '10000', '20000'];

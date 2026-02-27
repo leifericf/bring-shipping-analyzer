@@ -25,6 +25,7 @@ const DESTINATIONS = [
   { country: 'Iceland', code: 'IS', postalCode: '101', zone: 6, desc: 'Reykjavik' },
   { country: 'Greenland', code: 'GL', postalCode: '3900', zone: 7, desc: 'Nuuk' },
   { country: 'Faroe Islands', code: 'FO', postalCode: '100', zone: 7, desc: 'Tórshavn' },
+  { country: 'Japan', code: 'JP', postalCode: '1000001', zone: null, desc: 'Tokyo' },
 ];
 
 const DOMESTIC_SERVICES = [
