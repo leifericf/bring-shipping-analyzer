@@ -1,49 +1,26 @@
 import fs from 'fs';
 import { join } from 'path';
 import { loadEnv, getOutputDir, getAuthHeaders, sleep, fetchWithRetry, csvRow } from './lib.mjs';
+import { loadConfig } from './config.mjs';
+import { getDb, insertShippingRates, insertZones, closeDb } from './db.mjs';
 
 const env = loadEnv();
+const config = loadConfig();
 
 const API_UID = env.BRING_API_UID;
 const API_KEY = env.BRING_API_KEY;
 const CUSTOMER_NUMBER = env.BRING_CUSTOMER_NUMBER;
 const ORIGIN_POSTAL_CODE = env.BRING_ORIGIN_POSTAL_CODE || '0174';
-const ORIGIN_COUNTRY = 'NO';
 const OUTPUT_DIR = getOutputDir(CUSTOMER_NUMBER);
+const RUN_ID = process.env.RUN_ID ? Number(process.env.RUN_ID) : null;
 
-const DESTINATIONS = [
-  { country: 'Norway', code: 'NO', postalCode: '0150', zone: 1, desc: 'Oslo' },
-  { country: 'Norway', code: 'NO', postalCode: '1613', zone: 2, desc: 'Østlandet' },
-  { country: 'Norway', code: 'NO', postalCode: '5015', zone: 3, desc: 'Bergen' },
-  { country: 'Norway', code: 'NO', postalCode: '7020', zone: 4, desc: 'Trondheim' },
-  { country: 'Norway', code: 'NO', postalCode: '9405', zone: 5, desc: 'Harstad' },
-  { country: 'Norway', code: 'NO', postalCode: '8100', zone: 6, desc: 'Bodø' },
-  { country: 'Norway', code: 'NO', postalCode: '9700', zone: 7, desc: 'Vadsø' },
-  { country: 'Sweden', code: 'SE', postalCode: '11122', zone: 1, desc: 'Stockholm' },
-  { country: 'Denmark', code: 'DK', postalCode: '1050', zone: 1, desc: 'Copenhagen' },
-  { country: 'Finland', code: 'FI', postalCode: '00100', zone: 1, desc: 'Helsinki' },
-  { country: 'Iceland', code: 'IS', postalCode: '101', zone: 6, desc: 'Reykjavik' },
-  { country: 'Greenland', code: 'GL', postalCode: '3900', zone: 7, desc: 'Nuuk' },
-  { country: 'Faroe Islands', code: 'FO', postalCode: '100', zone: 7, desc: 'Tórshavn' },
-  { country: 'Japan', code: 'JP', postalCode: '1000001', zone: null, desc: 'Tokyo' },
-];
+// Read from config
+const ORIGIN_COUNTRY = config.originCountry;
+const DESTINATIONS = config.destinations;
+const DOMESTIC_SERVICES = config.domesticServices;
+const INTERNATIONAL_SERVICES = config.internationalServices;
+const WEIGHTS_GRAMS = config.weightTiersGrams;
 
-const DOMESTIC_SERVICES = [
-  { id: '3584', name: 'Home mailbox parcel', maxWeight: 5000 },
-  { id: '3570', name: 'Home mailbox parcel RFID', maxWeight: 5000 },
-  { id: '5800', name: 'Pickup parcel', maxWeight: 35000 },
-  { id: '5000', name: 'Business parcel', maxWeight: 35000 },
-  { id: '5600', name: 'Parcel home plus', maxWeight: 35000 },
-];
-
-const INTERNATIONAL_SERVICES = [
-  { id: 'PICKUP_PARCEL', name: 'PickUp Parcel', maxWeight: 20000 },
-  { id: 'BUSINESS_PARCEL', name: 'Business Parcel', maxWeight: 35000 },
-  { id: 'HOME_DELIVERY_PARCEL', name: 'Home Delivery Parcel', maxWeight: 35000 },
-  { id: '3639', name: 'Letter parcel International', maxWeight: 2000 },
-];
-
-const WEIGHTS_GRAMS = [250, 750, 1000, 5000, 10000, 20000, 35000];
 const API_URL = 'https://api.bring.com/shippingguide/api/v2/products';
 
 async function fetchRates(destination, service, weightGrams) {
@@ -116,7 +93,7 @@ async function main() {
   // Count total requests, skipping weights above service max
   let totalRequests = 0;
   for (const dest of DESTINATIONS) {
-    const services = dest.code === 'NO' ? DOMESTIC_SERVICES : INTERNATIONAL_SERVICES;
+    const services = dest.code === ORIGIN_COUNTRY ? DOMESTIC_SERVICES : INTERNATIONAL_SERVICES;
     for (const service of services) {
       totalRequests += WEIGHTS_GRAMS.filter(w => w <= service.maxWeight).length;
     }
@@ -125,7 +102,7 @@ async function main() {
   let completedRequests = 0;
 
   for (const destination of DESTINATIONS) {
-    const services = destination.code === 'NO' ? DOMESTIC_SERVICES : INTERNATIONAL_SERVICES;
+    const services = destination.code === ORIGIN_COUNTRY ? DOMESTIC_SERVICES : INTERNATIONAL_SERVICES;
     console.log(`\nFetching rates for ${destination.country} - ${destination.desc} (Zone ${destination.zone})...`);
 
     for (const service of services) {
@@ -172,21 +149,28 @@ async function main() {
   // Generate zones.csv — note: zones can differ per service for the same postal code
   const zonesMap = new Map();
   for (const r of results) {
-    const key = `${r.country_code}_${r.postal_code}`;
+    const key = `${r.country_code}_${r.postal_code}_${r.service_id}`;
     if (!zonesMap.has(key)) {
       zonesMap.set(key, {
-        country: r.country,
         country_code: r.country_code,
         postal_code: r.postal_code,
+        service_id: r.service_id,
         zone: r.zone,
       });
     }
   }
-  const zonesHeader = 'country,country_code,postal_code,zone';
-  const zonesRows = [...zonesMap.values()]
-    .sort((a, b) => a.country.localeCompare(b.country) || a.postal_code.localeCompare(b.postal_code))
-    .map(z => csvRow([z.country, z.country_code, z.postal_code, z.zone]));
+  const zonesHeader = 'country_code,postal_code,service_id,zone';
+  const zonesList = [...zonesMap.values()]
+    .sort((a, b) => a.country_code.localeCompare(b.country_code) || a.postal_code.localeCompare(b.postal_code));
+  const zonesRows = zonesList.map(z => csvRow([z.country_code, z.postal_code, z.service_id, z.zone]));
   fs.writeFileSync(join(OUTPUT_DIR, 'zones.csv'), [zonesHeader, ...zonesRows].join('\n'));
+
+  // Write to database if we have a run ID
+  if (RUN_ID) {
+    insertShippingRates(RUN_ID, results);
+    insertZones(RUN_ID, zonesList);
+    closeDb();
+  }
 
   console.log(`\n\nDone! Fetched ${results.length} rates.`);
   console.log(`Results saved to ${OUTPUT_DIR}/shipping_rates.csv`);
