@@ -64,9 +64,173 @@ function analyzeInvoices(lineItems) {
 }
 
 /**
+ * Group invoice line items into per-shipment profiles.
+ * Sums all costs (parcel + road toll + surcharge) per shipment
+ * and extracts weight from the parcel line.
+ */
+function buildShipmentProfiles(lineItems) {
+  const shipments = new Map();
+
+  for (const item of lineItems) {
+    const key = item.shipment_number;
+    if (!shipments.has(key)) {
+      shipments.set(key, {
+        productCode: item.product_code,
+        toPostalCode: item.to_postal_code,
+        toCity: item.to_city,
+        weight: null,
+        totalCost: 0,
+      });
+    }
+
+    const s = shipments.get(key);
+    s.totalCost += parseFloat(item.agreement_price) || 0;
+
+    const desc = item.description || '';
+    if (!desc.includes('Road toll') && !desc.includes('Surcharge') && item.weight_kg) {
+      s.weight = parseFloat(item.weight_kg);
+    }
+  }
+
+  return shipments;
+}
+
+/**
+ * Generate a profitability analysis section for RESULTS.md.
+ * Cross-references actual invoice costs against suggested Shopify rates.
+ */
+function generateProfitabilitySection(lineItems, rates, roadToll) {
+  const shipments = buildShipmentProfiles(lineItems);
+  const norway3584 = rates.filter(r => r.country_code === 'NO' && r.service_id === '3584');
+
+  const brackets = [
+    { name: '0–0.5 kg', maxWeight: 0.5, rateWeight: '250', shipments: [] },
+    { name: '0.5–1 kg', maxWeight: 1.0, rateWeight: '1000', shipments: [] },
+    { name: '1 kg+', maxWeight: Infinity, rateWeight: '5000', shipments: [] },
+  ];
+
+  // Compute suggested Shopify price for each bracket from Zone 3 rates
+  for (const bracket of brackets) {
+    const rate = norway3584.find(r => r.zone === '3' && r.weight_g === bracket.rateWeight);
+    if (rate) {
+      bracket.shopifyPrice = nicePrice(Math.ceil((parseFloat(rate.price_nok) + roadToll) * 1.25));
+      bracket.revenueExVat = bracket.shopifyPrice / 1.25;
+    }
+  }
+
+  // Assign domestic 3584 shipments to brackets
+  for (const [, s] of shipments) {
+    if (s.productCode !== '3584' || s.weight === null) continue;
+    const bracket = brackets.find(b => s.weight <= b.maxWeight);
+    if (bracket) {
+      bracket.shipments.push({
+        weight: s.weight,
+        totalCost: s.totalCost,
+        toCity: s.toCity,
+        toPostalCode: s.toPostalCode,
+        revenueExVat: bracket.revenueExVat,
+        margin: bracket.revenueExVat - s.totalCost,
+      });
+    }
+  }
+
+  const totalShipments = brackets.reduce((sum, b) => sum + b.shipments.length, 0);
+
+  let md = `## Profitability Analysis\n\n`;
+  md += `Based on ${totalShipments} domestic shipments (service 3584) from invoice data,\n`;
+  md += `projected against suggested Shopify rates (Zone 3 pricing).\n`;
+  md += `Cost = actual invoice cost per shipment (parcel + road toll + any surcharges).\n\n`;
+
+  // Per-bracket summary table
+  md += `### Per-Bracket Summary\n\n`;
+  md += `| Bracket | Shipments | Avg Cost | Shopify Rate | Revenue ex VAT | Avg Margin | Total Margin |\n`;
+  md += `|---------|-----------|----------|-------------|----------------|------------|-------------|\n`;
+
+  let grandTotalMargin = 0;
+  let grandTotalCost = 0;
+  let grandTotalRevenue = 0;
+
+  for (const bracket of brackets) {
+    const n = bracket.shipments.length;
+    if (n === 0) {
+      md += `| ${bracket.name} | 0 | — | ${bracket.shopifyPrice} kr | ${bracket.revenueExVat.toFixed(2)} NOK | — | — |\n`;
+      continue;
+    }
+
+    const totalCost = bracket.shipments.reduce((sum, s) => sum + s.totalCost, 0);
+    const avgCost = totalCost / n;
+    const totalMargin = bracket.shipments.reduce((sum, s) => sum + s.margin, 0);
+    const avgMargin = totalMargin / n;
+    const totalRevenue = bracket.revenueExVat * n;
+
+    grandTotalMargin += totalMargin;
+    grandTotalCost += totalCost;
+    grandTotalRevenue += totalRevenue;
+
+    const sign = avgMargin >= 0 ? '+' : '';
+    const totalSign = totalMargin >= 0 ? '+' : '';
+
+    md += `| ${bracket.name} | ${n} | ${avgCost.toFixed(2)} NOK | ${bracket.shopifyPrice} kr | ${bracket.revenueExVat.toFixed(2)} NOK | ${sign}${avgMargin.toFixed(2)} NOK | ${totalSign}${totalMargin.toFixed(2)} NOK |\n`;
+  }
+
+  // Total row
+  const avgMarginAll = totalShipments > 0 ? grandTotalMargin / totalShipments : 0;
+  const totalSign = grandTotalMargin >= 0 ? '+' : '';
+  const avgSign = avgMarginAll >= 0 ? '+' : '';
+  const marginPct = grandTotalRevenue > 0 ? ((grandTotalMargin / grandTotalRevenue) * 100).toFixed(1) : '0.0';
+  md += `| **Total** | **${totalShipments}** | | | | **${avgSign}${avgMarginAll.toFixed(2)} NOK/parcel** | **${totalSign}${grandTotalMargin.toFixed(2)} NOK** |\n`;
+  md += `\nOverall margin: ${marginPct}% of revenue ex VAT.\n\n`;
+
+  // Loss-making shipments
+  const lossMaking = [];
+  for (const bracket of brackets) {
+    for (const s of bracket.shipments) {
+      if (s.margin < 0) {
+        lossMaking.push({ ...s, bracket: bracket.name });
+      }
+    }
+  }
+
+  if (lossMaking.length > 0) {
+    lossMaking.sort((a, b) => a.margin - b.margin); // worst first
+
+    md += `### Loss-Making Shipments\n\n`;
+    md += `${lossMaking.length} out of ${totalShipments} shipments would still lose money at Zone 3 pricing:\n\n`;
+    md += `| Bracket | City | Postal Code | Weight | Cost | Revenue ex VAT | Loss |\n`;
+    md += `|---------|------|------------|--------|------|----------------|------|\n`;
+
+    for (const s of lossMaking) {
+      md += `| ${s.bracket} | ${s.toCity} | ${s.toPostalCode} | ${s.weight} kg | ${s.totalCost.toFixed(2)} NOK | ${s.revenueExVat.toFixed(2)} NOK | ${s.margin.toFixed(2)} NOK |\n`;
+    }
+
+    md += `\nThese are shipments to remote zones where Zone 3 pricing doesn't fully cover costs.\n`;
+    md += `Consider whether the volume to these areas justifies raising prices further.\n\n`;
+  } else {
+    md += `All ${totalShipments} shipments would be profitable at the suggested Zone 3 rates.\n\n`;
+  }
+
+  // Worst case per bracket
+  md += `### Worst-Case Shipment per Bracket\n\n`;
+  md += `The most expensive shipment in each bracket — your "floor" for margin evaluation:\n\n`;
+  md += `| Bracket | City | Weight | Cost | Revenue ex VAT | Margin |\n`;
+  md += `|---------|------|--------|------|----------------|--------|\n`;
+
+  for (const bracket of brackets) {
+    if (bracket.shipments.length === 0) continue;
+    const worst = bracket.shipments.reduce((a, b) => a.totalCost > b.totalCost ? a : b);
+    const sign = worst.margin >= 0 ? '+' : '';
+    md += `| ${bracket.name} | ${worst.toCity} | ${worst.weight} kg | ${worst.totalCost.toFixed(2)} NOK | ${bracket.revenueExVat.toFixed(2)} NOK | ${sign}${worst.margin.toFixed(2)} NOK |\n`;
+  }
+
+  md += `\n`;
+
+  return md;
+}
+
+/**
  * Generate the RESULTS.md markdown report.
  */
-function generateResultsMd(rates, invoiceAnalysis) {
+function generateResultsMd(rates, invoiceAnalysis, lineItems) {
   const { byProduct, avgRoadToll } = invoiceAnalysis;
   const roadToll = Math.round(avgRoadToll * 100) / 100;
 
@@ -292,6 +456,8 @@ International only needs two Shopify weight brackets (0–1 kg and 1 kg+) since 
 
 `;
 
+  md += generateProfitabilitySection(lineItems, rates, roadToll);
+
   md += `## Notes
 
 - **Zone risk**: Zone 1 prices are cheapest. Shipping to Zone 7 (Finnmark) costs roughly 2x Zone 1.
@@ -332,7 +498,7 @@ async function main() {
   const invoiceAnalysis = analyzeInvoices(lineItems);
 
   // Generate RESULTS.md
-  const resultsMd = generateResultsMd(rates, invoiceAnalysis);
+  const resultsMd = generateResultsMd(rates, invoiceAnalysis, lineItems);
   fs.writeFileSync(join(outputDir, 'RESULTS.md'), resultsMd);
 
   console.log(`Generated ${outputDir}/RESULTS.md`);
