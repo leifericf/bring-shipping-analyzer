@@ -2,6 +2,13 @@ import fs from 'fs';
 import { join } from 'path';
 import { DATA_DIR, parseCsv } from './lib.mjs';
 
+/**
+ * Round up to the next "nice" price ending in 9 (e.g. 59, 79, 149, 999).
+ */
+function nicePrice(value) {
+  return Math.ceil((value - 9) / 10) * 10 + 9;
+}
+
 function findLatestDataDir() {
   const dirs = fs.readdirSync(DATA_DIR)
     .filter(name => fs.statSync(join(DATA_DIR, name)).isDirectory())
@@ -199,7 +206,9 @@ Generated: ${new Date().toISOString()}
 
   md += `\n## Suggested Shopify Rates
 
-### Norway — Service 3584 (incl. road toll + 25% VAT, rounded up)
+Prices rounded up to the next "nice" price ending in 9.
+
+### Norway — Service 3584 (incl. road toll + 25% VAT)
 
 | Weight | Zone 1 (Oslo) | Zone 3 (Bergen) | Zone 7 (Finnmark) |
 |--------|--------------|-----------------|-------------------|
@@ -209,12 +218,12 @@ Generated: ${new Date().toISOString()}
     const cells = ['1', '3', '7'].map(zone => {
       const rate = norway3584.find(r => r.zone === zone && r.weight_g === bracket.weight);
       if (!rate) return 'N/A';
-      return `${Math.ceil((parseFloat(rate.price_nok) + roadToll) * 1.25)} NOK`;
+      return `${nicePrice(Math.ceil((parseFloat(rate.price_nok) + roadToll) * 1.25))} kr`;
     });
     md += `| ${bracket.name} | ${cells.join(' | ')} |\n`;
   }
 
-  md += `\n### International — PICKUP_PARCEL (no VAT, rounded up)
+  md += `\n### International — PICKUP_PARCEL (no VAT)
 
 | Country | 0–0.5 kg | 0.5–1 kg | 1 kg+ |
 |---------|----------|----------|-------|
@@ -229,7 +238,7 @@ Generated: ${new Date().toISOString()}
         r.service_id === 'PICKUP_PARCEL' &&
         r.weight_g === w
       );
-      return rate ? `${Math.ceil(parseFloat(rate.price_nok))} NOK` : 'N/A';
+      return rate ? `${nicePrice(Math.ceil(parseFloat(rate.price_nok)))} kr` : 'N/A';
     });
     md += `| ${name} | ${cells.join(' | ')} |\n`;
   }
@@ -243,19 +252,19 @@ Generated: ${new Date().toISOString()}
       const r = rates.find(r => r.country_code === code && r.service_id === 'PICKUP_PARCEL' && r.weight_g === w);
       return r ? Math.ceil(parseFloat(r.price_nok)) : 0;
     });
-    nordicMax[w] = Math.max(...nordicPrices);
+    nordicMax[w] = nicePrice(Math.max(...nordicPrices));
 
     const remotePrices = ['IS', 'GL', 'FO'].map(code => {
       const r = rates.find(r => r.country_code === code && r.service_id === 'PICKUP_PARCEL' && r.weight_g === w);
       return r ? Math.ceil(parseFloat(r.price_nok)) : 0;
     });
-    remoteMax[w] = Math.max(...remotePrices);
+    remoteMax[w] = nicePrice(Math.max(...remotePrices));
   }
 
   // Norway Zone 3 as safe default
   const norwaySimple = shopifyBrackets.map(b => {
     const rate = norway3584.find(r => r.zone === '3' && r.weight_g === b.weight);
-    return rate ? `${Math.ceil((parseFloat(rate.price_nok) + roadToll) * 1.25)} NOK` : 'N/A';
+    return rate ? `${nicePrice(Math.ceil((parseFloat(rate.price_nok) + roadToll) * 1.25))} kr` : 'N/A';
   });
 
   md += `\n### Simplified recommendation
@@ -263,8 +272,8 @@ Generated: ${new Date().toISOString()}
 | Destination | 0–0.5 kg | 0.5–1 kg | 1 kg+ |
 |-------------|----------|----------|-------|
 | Norway | ${norwaySimple.join(' | ')} |
-| Sweden / Denmark / Finland | ${intlBracketWeights.map(w => `${nordicMax[w]} NOK`).join(' | ')} |
-| Iceland / Greenland / Faroes | ${intlBracketWeights.map(w => `${remoteMax[w]} NOK`).join(' | ')} |
+| Sweden / Denmark / Finland | ${intlBracketWeights.map(w => `${nordicMax[w]} kr`).join(' | ')} |
+| Iceland / Greenland / Faroes | ${intlBracketWeights.map(w => `${remoteMax[w]} kr`).join(' | ')} |
 
 Norway uses Zone 3 pricing (covers most of the country). Nordic and remote groups use the highest price in each group so you never lose money.
 
