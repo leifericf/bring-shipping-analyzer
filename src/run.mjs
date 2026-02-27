@@ -10,13 +10,17 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const env = loadEnv();
 const config = loadConfig();
 
-// Compute the output directory once so all scripts use the same one,
-// even if the pipeline runs across midnight.
-const OUTPUT_DIR = getOutputDir(env.BRING_CUSTOMER_NUMBER);
+// When spawned by the server, RUN_ID and OUTPUT_DIR are already set.
+// When run from CLI, we create them here.
+const OUTPUT_DIR = process.env.OUTPUT_DIR || getOutputDir(env.BRING_CUSTOMER_NUMBER);
 const ORIGIN_POSTAL_CODE = env.BRING_ORIGIN_POSTAL_CODE || '0174';
 
-// Create a run record in the database
-const runId = createRun(env.BRING_CUSTOMER_NUMBER, ORIGIN_POSTAL_CODE, OUTPUT_DIR, config);
+let runId;
+if (process.env.RUN_ID) {
+  runId = Number(process.env.RUN_ID);
+} else {
+  runId = createRun(env.BRING_CUSTOMER_NUMBER, ORIGIN_POSTAL_CODE, OUTPUT_DIR, config);
+}
 
 const scripts = [
   { name: 'fetch_rates.mjs', desc: 'Fetching shipping rates', status: 'fetching_rates' },
