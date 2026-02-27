@@ -71,6 +71,7 @@ The database is not backed up automatically. If you want to keep a copy, just co
 
 - **Norway zone system**: Bring uses 7 shipping zones based on distance from origin. Zone numbers can differ per service for the same postal code.
 - **VAT**: Norway requires 25% VAT on shipping charged to customers. International shipping has no VAT.
+- **Invoice history**: The Bring Invoice API only allows fetching invoices from the last 365 days. Older invoices are not available through the API.
 - All Bring APIs used are read-only.
 
 ## License

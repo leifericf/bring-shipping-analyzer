@@ -39,7 +39,16 @@ async function fetchXml(url) {
 }
 
 async function getInvoiceList() {
-  const data = await fetchJson(`${INVOICES_URL}/${CUSTOMER_NUMBER}.json`);
+  // The API returns only the last 65 days by default.
+  // Use fromDate/toDate to request the maximum of 365 days.
+  const toDate = new Date();
+  const fromDate = new Date();
+  fromDate.setDate(fromDate.getDate() - 365);
+
+  const fmt = (d) => `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+  const url = `${INVOICES_URL}/${CUSTOMER_NUMBER}.json?fromDate=${fmt(fromDate)}&toDate=${fmt(toDate)}`;
+
+  const data = await fetchJson(url);
   return data.invoices || [];
 }
 
