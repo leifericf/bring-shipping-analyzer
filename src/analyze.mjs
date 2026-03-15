@@ -444,12 +444,15 @@ function generateReport(rates, invoiceAnalysis, lineItems) {
       vatMultiplier,
       brackets: shopifyBrackets.map((b, i) => {
         const profBracket = profitability.brackets[i];
+        // Use profitability-matched shipment count so avgCost and volume
+        // reflect the same population (same service + weight bracket).
+        const matchedVolume = profBracket?.shipments?.length ?? 0;
         return {
           name: b.name,
           baselinePrice: norwayRates[i].price,
           revenueExVat: profBracket?.revenueExVat ?? null,
           avgCost: profBracket?.avgCost ?? null,
-          volume: volume.domesticCounts[i],
+          volume: matchedVolume,
         };
       }),
       domesticCounts: volume.domesticCounts,
