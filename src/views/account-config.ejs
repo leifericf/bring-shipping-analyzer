@@ -30,9 +30,9 @@
         <div class="dest-add-fields">
           <label>
             Country *
-            <div class="autocomplete-wrap">
-              <input type="text" id="new-country" placeholder="Start typing..." autocomplete="off">
-              <ul class="autocomplete-list" id="country-suggestions"></ul>
+            <div class="autocomplete-wrap" role="combobox" aria-expanded="false" aria-haspopup="listbox" aria-owns="country-suggestions">
+              <input type="text" id="new-country" placeholder="Start typing..." autocomplete="off" aria-autocomplete="list" aria-controls="country-suggestions">
+              <ul class="autocomplete-list" id="country-suggestions" role="listbox" aria-label="Country suggestions"></ul>
             </div>
           </label>
           <label>
@@ -315,14 +315,23 @@ function esc(s) {
 (function () {
   const input = document.getElementById('new-country');
   const list = document.getElementById('country-suggestions');
+  const combobox = input.closest('[role="combobox"]');
   let activeIdx = -1;
+
+  function setExpanded(open) {
+    list.style.display = open ? 'block' : 'none';
+    combobox.setAttribute('aria-expanded', String(open));
+    if (!open) {
+      input.removeAttribute('aria-activedescendant');
+    }
+  }
 
   input.addEventListener('input', function () {
     const val = this.value.trim().toLowerCase();
     list.innerHTML = '';
     activeIdx = -1;
     if (!val || val.length < 1 || allCountries.length === 0) {
-      list.style.display = 'none';
+      setExpanded(false);
       return;
     }
     // Match countries: starts-with first, then contains
@@ -332,11 +341,13 @@ function esc(s) {
     );
     const matches = starts.concat(contains).slice(0, 12);
     if (matches.length === 0) {
-      list.style.display = 'none';
+      setExpanded(false);
       return;
     }
     matches.forEach((c, i) => {
       const li = document.createElement('li');
+      li.id = 'country-opt-' + i;
+      li.setAttribute('role', 'option');
       li.textContent = c.name + ' (' + c.code + ')';
       li.dataset.index = i;
       li.addEventListener('mousedown', function (e) {
@@ -345,11 +356,11 @@ function esc(s) {
       });
       list.appendChild(li);
     });
-    list.style.display = 'block';
+    setExpanded(true);
   });
 
   input.addEventListener('keydown', function (e) {
-    const items = list.querySelectorAll('li');
+    const items = list.querySelectorAll('[role="option"]');
     if (!items.length) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -363,21 +374,26 @@ function esc(s) {
       e.preventDefault();
       items[activeIdx].dispatchEvent(new Event('mousedown'));
     } else if (e.key === 'Escape') {
-      list.style.display = 'none';
+      setExpanded(false);
       activeIdx = -1;
     }
   });
 
   function highlightItem(items) {
     items.forEach((li, i) => {
-      li.classList.toggle('active', i === activeIdx);
-      if (i === activeIdx) li.scrollIntoView({ block: 'nearest' });
+      const isActive = i === activeIdx;
+      li.classList.toggle('active', isActive);
+      li.setAttribute('aria-selected', String(isActive));
+      if (isActive) {
+        li.scrollIntoView({ block: 'nearest' });
+        input.setAttribute('aria-activedescendant', li.id);
+      }
     });
   }
 
   input.addEventListener('blur', function () {
     // Small delay so mousedown on list items can fire first
-    setTimeout(() => { list.style.display = 'none'; }, 150);
+    setTimeout(() => { setExpanded(false); }, 150);
   });
 
   function selectCountry(c) {
@@ -386,7 +402,7 @@ function esc(s) {
     if (c.capital) {
       document.getElementById('new-desc').value = c.capital;
     }
-    list.style.display = 'none';
+    setExpanded(false);
     activeIdx = -1;
     // Focus postal code since that's what the user still needs to fill in
     document.getElementById('new-postal').focus();
