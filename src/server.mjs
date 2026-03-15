@@ -190,7 +190,9 @@ app.get('/runs/:id', (req, res) => {
   if (run.status === 'completed') {
     const result = getAnalysisResult(run.id);
     if (result) {
-      resultsHtml = marked(result.results_markdown);
+      const content = result.results_markdown;
+      // New reports store HTML directly; legacy reports store markdown
+      resultsHtml = content.trimStart().startsWith('<') ? content : marked(content);
     }
   }
 

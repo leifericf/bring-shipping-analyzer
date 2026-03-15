@@ -545,7 +545,7 @@ details summary:hover {
   white-space: nowrap;
 }
 
-/* -- Results (rendered markdown) ------------------------------------------- */
+/* -- Results (rendered markdown — legacy) ---------------------------------- */
 
 .results-content {
   margin-top: 2rem;
@@ -570,20 +570,200 @@ details summary:hover {
   margin-top: 1.5rem;
 }
 
-.results-content table {
+.results-content > table {
   display: block;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   white-space: nowrap;
 }
 
-.results-content table th,
-.results-content table td {
-  font-size: 0.85rem;
-}
-
 .results-content code {
   font-size: 0.85em;
+}
+
+/* -- Report: Hero section ------------------------------------------------- */
+
+.report-hero {
+  margin-bottom: 2rem;
+}
+
+.results-content .report-hero h2 {
+  font-size: 1.35rem;
+  margin-top: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.report-subtitle {
+  color: var(--pico-muted-color);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.report-note {
+  color: var(--pico-muted-color);
+  font-size: 0.8rem;
+  margin-top: 0.75rem;
+  line-height: 1.6;
+}
+
+/* -- Report: Rate card table ---------------------------------------------- */
+
+.rate-card {
+  display: table;
+  width: auto;
+  white-space: nowrap;
+  margin-bottom: 0.5rem;
+}
+
+.rate-card th,
+.rate-card td {
+  text-align: center;
+  padding: 0.6rem 1.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.rate-card th:first-child,
+.rate-card td:first-child {
+  text-align: left;
+}
+
+.rate-card tbody td:not(:first-child) {
+  font-weight: 600;
+  font-size: 1.1em;
+}
+
+/* -- Report: KPI tiles ---------------------------------------------------- */
+
+.report-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 2rem;
+}
+
+.kpi {
+  padding: 0.75rem 1rem;
+  border-radius: var(--pico-border-radius);
+  border: 1px solid var(--pico-muted-border-color);
+  background: rgba(0, 0, 0, 0.02);
+  text-align: center;
+}
+
+.kpi-value {
+  display: block;
+  font-size: 1.3rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+
+.kpi-label {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--pico-muted-color);
+  margin-top: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.kpi-positive .kpi-value { color: #155724; }
+.kpi-negative .kpi-value { color: #721c24; }
+
+/* -- Report: Drill-down sections ------------------------------------------ */
+
+.report-details {
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: var(--pico-border-radius);
+  overflow: hidden;
+}
+
+.report-details > summary {
+  padding: 0.75rem 1rem;
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.report-details[open] > summary {
+  border-bottom: 1px solid var(--pico-muted-border-color);
+}
+
+.report-details-body {
+  padding: 1rem;
+  overflow-x: auto;
+}
+
+.report-details-body h4 {
+  font-size: 0.95rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.report-details-body h4:first-child {
+  margin-top: 0;
+}
+
+.report-details-body table {
+  display: table;
+  width: 100%;
+  margin-bottom: 1rem;
+  white-space: nowrap;
+}
+
+.report-details-body table th,
+.report-details-body table td {
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.report-details-body > p {
+  margin-bottom: 0.75rem;
+}
+
+/* Nested details (e.g., full shipment list) */
+.report-details-nested {
+  margin-top: 1rem;
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: var(--pico-border-radius);
+  overflow: hidden;
+}
+
+.report-details-nested > summary {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.report-details-nested[open] > summary {
+  border-bottom: 1px solid var(--pico-muted-border-color);
+}
+
+/* Assumptions table */
+.assumptions-table th {
+  text-align: left;
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 0.85rem;
+  width: 1%;
+}
+
+/* -- Report: Margin coloring ---------------------------------------------- */
+
+.margin-positive { color: #155724; font-weight: 600; }
+.margin-negative { color: #dc3545; font-weight: 600; }
+
+.total-row td {
+  border-top: 2px solid var(--pico-muted-border-color);
+}
+
+/* -- Report: Timestamp ---------------------------------------------------- */
+
+.report-timestamp {
+  color: var(--pico-muted-color);
+  font-size: 0.75rem;
+  margin-top: 2rem;
+  text-align: right;
 }
 
 /* -- Spacing utilities ----------------------------------------------------- */

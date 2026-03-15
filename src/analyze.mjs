@@ -10,12 +10,29 @@ if (!RUN_ID) {
 const config = loadConfig();
 const analysis = config.analysis;
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
 /**
  * Round up to the next "nice" price ending in 9 (e.g. 59, 79, 149, 999).
  */
 function nicePrice(value) {
   return Math.ceil((value - 9) / 10) * 10 + 9;
 }
+
+function fmtNok(value) {
+  return value.toFixed(2) + ' NOK';
+}
+
+function fmtWeight(grams) {
+  const g = parseInt(grams, 10);
+  return g >= 1000 ? `${g / 1000} kg` : `${g}g`;
+}
+
+function esc(str) {
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ── Invoice analysis ─────────────────────────────────────────────────────────
 
 /**
  * Analyze invoice line items.
@@ -28,14 +45,12 @@ function analyzeInvoices(lineItems) {
   for (const item of lineItems) {
     const desc = item.description || '';
 
-    // Collect road toll values separately
     if (desc.includes('Road toll')) {
       const price = parseFloat(item.agreement_price) || 0;
       if (price > 0) roadTolls.push(price);
       continue;
     }
 
-    // Skip surcharge lines
     if (desc.includes('Surcharge')) continue;
 
     const key = `${item.product_code} - ${item.product}`;
@@ -59,8 +74,6 @@ function analyzeInvoices(lineItems) {
 
 /**
  * Group invoice line items into per-shipment profiles.
- * Sums all costs (parcel + road toll + surcharge) per shipment
- * and extracts weight from the parcel line.
  */
 function buildShipmentProfiles(lineItems) {
   const shipments = new Map();
@@ -89,11 +102,9 @@ function buildShipmentProfiles(lineItems) {
   return shipments;
 }
 
-/**
- * Generate a profitability analysis section for the report.
- * Cross-references actual invoice costs against suggested Shopify rates.
- */
-function generateProfitabilitySection(lineItems, rates, roadToll) {
+// ── Profitability computation ────────────────────────────────────────────────
+
+function computeProfitability(lineItems, rates, roadToll) {
   const primaryService = analysis.primaryDomesticService;
   const safeZone = analysis.safeDefaultZone;
   const vatMultiplier = analysis.vatMultiplier;
@@ -108,7 +119,6 @@ function generateProfitabilitySection(lineItems, rates, roadToll) {
     shipments: [],
   }));
 
-  // Compute suggested Shopify price for each bracket from safe default zone rates
   for (const bracket of brackets) {
     const rate = domesticRates.find(r => r.zone === safeZone && String(r.weight_g) === bracket.rateWeight);
     if (rate) {
@@ -117,7 +127,6 @@ function generateProfitabilitySection(lineItems, rates, roadToll) {
     }
   }
 
-  // Assign domestic shipments to brackets
   for (const [, s] of shipments) {
     if (s.productCode !== primaryService || s.weight === null) continue;
     const bracket = brackets.find(b => s.weight <= b.maxWeight);
@@ -134,350 +143,534 @@ function generateProfitabilitySection(lineItems, rates, roadToll) {
   }
 
   const totalShipments = brackets.reduce((sum, b) => sum + b.shipments.length, 0);
-
-  let md = `## Profitability Analysis\n\n`;
-  md += `Based on ${totalShipments} domestic shipments (service ${primaryService}) from invoice data,\n`;
-  md += `projected against suggested Shopify rates (Zone ${safeZone} pricing).\n`;
-  md += `Cost = actual invoice cost per shipment (parcel + road toll + any surcharges).\n\n`;
-
-  // Per-bracket summary table
-  md += `### Per-Bracket Summary\n\n`;
-  md += `| Bracket | Shipments | Avg Cost | Shopify Rate | Revenue ex VAT | Avg Margin | Total Margin |\n`;
-  md += `|---------|-----------|----------|-------------|----------------|------------|-------------|\n`;
-
   let grandTotalMargin = 0;
   let grandTotalCost = 0;
   let grandTotalRevenue = 0;
 
   for (const bracket of brackets) {
     const n = bracket.shipments.length;
-    if (n === 0) {
-      const priceStr = bracket.shopifyPrice != null ? `${bracket.shopifyPrice} kr` : 'N/A';
-      const revStr = bracket.revenueExVat != null ? `${bracket.revenueExVat.toFixed(2)} NOK` : 'N/A';
-      md += `| ${bracket.name} | 0 | — | ${priceStr} | ${revStr} | — | — |\n`;
-      continue;
-    }
-
-    const totalCost = bracket.shipments.reduce((sum, s) => sum + s.totalCost, 0);
-    const avgCost = totalCost / n;
-    const totalMargin = bracket.shipments.reduce((sum, s) => sum + s.margin, 0);
-    const avgMargin = totalMargin / n;
+    if (n === 0) continue;
+    bracket.totalCost = bracket.shipments.reduce((sum, s) => sum + s.totalCost, 0);
+    bracket.avgCost = bracket.totalCost / n;
+    bracket.totalMargin = bracket.shipments.reduce((sum, s) => sum + s.margin, 0);
+    bracket.avgMargin = bracket.totalMargin / n;
     const totalRevenue = bracket.revenueExVat * n;
-
-    grandTotalMargin += totalMargin;
-    grandTotalCost += totalCost;
+    grandTotalMargin += bracket.totalMargin;
+    grandTotalCost += bracket.totalCost;
     grandTotalRevenue += totalRevenue;
-
-    const sign = avgMargin >= 0 ? '+' : '';
-    const totalSign = totalMargin >= 0 ? '+' : '';
-
-    md += `| ${bracket.name} | ${n} | ${avgCost.toFixed(2)} NOK | ${bracket.shopifyPrice} kr | ${bracket.revenueExVat.toFixed(2)} NOK | ${sign}${avgMargin.toFixed(2)} NOK | ${totalSign}${totalMargin.toFixed(2)} NOK |\n`;
   }
 
-  // Total row
   const avgMarginAll = totalShipments > 0 ? grandTotalMargin / totalShipments : 0;
-  const totalSign = grandTotalMargin >= 0 ? '+' : '';
-  const avgSign = avgMarginAll >= 0 ? '+' : '';
-  const marginPct = grandTotalRevenue > 0 ? ((grandTotalMargin / grandTotalRevenue) * 100).toFixed(1) : '0.0';
-  md += `| **Total** | **${totalShipments}** | | | | **${avgSign}${avgMarginAll.toFixed(2)} NOK/parcel** | **${totalSign}${grandTotalMargin.toFixed(2)} NOK** |\n`;
-  md += `\nOverall margin: ${marginPct}% of revenue ex VAT.\n\n`;
+  const marginPct = grandTotalRevenue > 0 ? (grandTotalMargin / grandTotalRevenue) * 100 : 0;
 
-  // Loss-making shipments
   const lossMaking = [];
   for (const bracket of brackets) {
     for (const s of bracket.shipments) {
-      if (s.margin < 0) {
-        lossMaking.push({ ...s, bracket: bracket.name });
-      }
+      if (s.margin < 0) lossMaking.push({ ...s, bracket: bracket.name });
     }
   }
+  lossMaking.sort((a, b) => a.margin - b.margin);
 
-  if (lossMaking.length > 0) {
-    lossMaking.sort((a, b) => a.margin - b.margin); // worst first
-
-    md += `### Loss-Making Shipments\n\n`;
-    md += `${lossMaking.length} out of ${totalShipments} shipments would still lose money at Zone ${safeZone} pricing:\n\n`;
-    md += `| Bracket | City | Postal Code | Weight | Cost | Revenue ex VAT | Loss |\n`;
-    md += `|---------|------|------------|--------|------|----------------|------|\n`;
-
-    for (const s of lossMaking) {
-      md += `| ${s.bracket} | ${s.toCity} | ${s.toPostalCode} | ${s.weight} kg | ${s.totalCost.toFixed(2)} NOK | ${s.revenueExVat.toFixed(2)} NOK | ${s.margin.toFixed(2)} NOK |\n`;
-    }
-
-    md += `\nThese are shipments to remote zones where Zone ${safeZone} pricing doesn't fully cover costs.\n`;
-    md += `Consider whether the volume to these areas justifies raising prices further.\n\n`;
-  } else {
-    md += `All ${totalShipments} shipments would be profitable at the suggested Zone ${safeZone} rates.\n\n`;
-  }
-
-  // Worst case per bracket
-  md += `### Worst-Case Shipment per Bracket\n\n`;
-  md += `The most expensive shipment in each bracket — your "floor" for margin evaluation:\n\n`;
-  md += `| Bracket | City | Weight | Cost | Revenue ex VAT | Margin |\n`;
-  md += `|---------|------|--------|------|----------------|--------|\n`;
-
-  for (const bracket of brackets) {
-    if (bracket.shipments.length === 0) continue;
-    const worst = bracket.shipments.reduce((a, b) => a.totalCost > b.totalCost ? a : b);
-    const sign = worst.margin >= 0 ? '+' : '';
-    md += `| ${bracket.name} | ${worst.toCity} | ${worst.weight} kg | ${worst.totalCost.toFixed(2)} NOK | ${bracket.revenueExVat.toFixed(2)} NOK | ${sign}${worst.margin.toFixed(2)} NOK |\n`;
-  }
-
-  md += `\n`;
-
-  return md;
+  return {
+    brackets,
+    totalShipments,
+    grandTotalMargin,
+    grandTotalCost,
+    grandTotalRevenue,
+    avgMarginAll,
+    marginPct,
+    lossMaking,
+  };
 }
 
-/**
- * Generate the analysis report as markdown.
- */
-function generateResultsMd(rates, invoiceAnalysis, lineItems) {
+// ── HTML report generation ───────────────────────────────────────────────────
+
+function generateReport(rates, invoiceAnalysis, lineItems) {
   const { byProduct, avgRoadToll } = invoiceAnalysis;
   const roadToll = Math.round(avgRoadToll * 100) / 100;
 
   const primaryService = analysis.primaryDomesticService;
   const cheapestIntl = analysis.cheapestInternationalService;
   const vatMultiplier = analysis.vatMultiplier;
+  const vatPct = Math.round((vatMultiplier - 1) * 100);
   const safeZone = analysis.safeDefaultZone;
   const zoneCount = analysis.domesticZoneCount;
   const countryNames = config.countryNames;
   const { nordic: nordicCodes, remote: remoteCodes } = analysis.countryGroupings;
 
-  let md = `# Shipping Rate Analysis
+  const domesticRates = rates.filter(r => r.country_code === config.originCountry && r.service_id === primaryService);
+  const shopifyBrackets = analysis.domesticShopifyBrackets;
+  const intlShopifyBrackets = analysis.internationalShopifyBrackets;
 
-Generated: ${new Date().toISOString()}
+  // ── Compute recommended rates ────────────────────────────────────────────
 
-## Key Findings
+  const norwayRates = shopifyBrackets.map(b => {
+    const rate = domesticRates.find(r => r.zone === safeZone && String(r.weight_g) === b.rateWeight);
+    if (!rate) return { name: b.name, price: null };
+    return {
+      name: b.name,
+      price: nicePrice(Math.ceil((parseFloat(rate.price_nok) + roadToll) * vatMultiplier)),
+    };
+  });
 
-1. **Main service used**: \`${primaryService}\` (Home Mailbox Parcel) - cheapest domestic option
-2. **${primaryService} is Norway-only** - not available for international shipping
-3. **International shipping** uses \`${cheapestIntl}\` - cheapest option
-4. **Road toll**: ~${roadToll} NOK per shipment (Norway only, derived from invoice data)
+  const nordicRates = intlShopifyBrackets.map(b => {
+    const prices = nordicCodes.map(code => {
+      const r = rates.find(r => r.country_code === code && r.service_id === cheapestIntl && String(r.weight_g) === b.weight);
+      return r ? Math.ceil(parseFloat(r.price_nok)) : 0;
+    });
+    return { name: b.name, price: nicePrice(Math.max(...prices)) };
+  });
 
-`;
+  const remoteRates = intlShopifyBrackets.map(b => {
+    const prices = remoteCodes.map(code => {
+      const r = rates.find(r => r.country_code === code && r.service_id === cheapestIntl && String(r.weight_g) === b.weight);
+      return r ? Math.ceil(parseFloat(r.price_nok)) : 0;
+    });
+    return { name: b.name, price: nicePrice(Math.max(...prices)) };
+  });
 
-  // Invoice summary — show top products by shipment count
+  const nordicCountryList = nordicCodes.map(c => countryNames[c]).filter(Boolean).join(', ');
+  const remoteCountryList = remoteCodes.map(c => countryNames[c]).filter(Boolean).join(', ');
+
+  // ── Compute profitability ────────────────────────────────────────────────
+
   const sortedProducts = Object.entries(byProduct)
     .filter(([, stats]) => stats.count > 0)
     .sort((a, b) => b[1].count - a[1].count);
 
+  let profitability = null;
+  if (lineItems.length > 0) {
+    profitability = computeProfitability(lineItems, rates, roadToll);
+  }
+
+  // ── Render HTML ──────────────────────────────────────────────────────────
+
+  let html = '';
+
+  // 1) Hero: Recommended Rates
+  html += renderHeroSection(
+    norwayRates, nordicRates, remoteRates,
+    nordicCountryList, remoteCountryList,
+    shopifyBrackets, intlShopifyBrackets,
+    vatPct, roadToll, safeZone, primaryService, cheapestIntl,
+  );
+
+  // 2) KPI tiles
+  if (profitability && profitability.totalShipments > 0) {
+    html += renderKpis(profitability, roadToll, sortedProducts);
+  }
+
+  // 3) Drill-down: Rate breakdown
+  html += renderNorwayZoneDetails(domesticRates, roadToll, vatMultiplier, shopifyBrackets, primaryService, safeZone, zoneCount);
+  html += renderInternationalDetails(rates, countryNames, cheapestIntl);
+
+  // 4) Drill-down: Profitability
+  if (profitability && profitability.totalShipments > 0) {
+    html += renderProfitabilityDetails(profitability, safeZone, primaryService);
+  }
+
+  // 5) Drill-down: Invoice data
   if (sortedProducts.length > 0) {
-    md += `## Actual Shipment Data (from invoices)\n\n`;
-
-    for (const [product, stats] of sortedProducts) {
-      const avgPrice = (stats.totalAgreement / stats.count).toFixed(2);
-      const avgWeight = stats.weights.length > 0
-        ? (stats.weights.reduce((a, b) => a + b, 0) / stats.weights.length).toFixed(2)
-        : 'N/A';
-
-      md += `### ${product}\n\n`;
-      md += `- **Total shipments**: ${stats.count}\n`;
-      md += `- **Total paid**: ${stats.totalAgreement.toFixed(2)} NOK\n`;
-      md += `- **Average per shipment**: ${avgPrice} NOK\n`;
-      md += `- **Average weight**: ${avgWeight} kg\n\n`;
-    }
+    html += renderInvoiceSummary(sortedProducts);
   }
 
-  // Norway rate recommendations
-  const domesticRates = rates.filter(r => r.country_code === config.originCountry && r.service_id === primaryService);
-  const weightTiers = analysis.domesticWeightTiers;
+  // 6) Assumptions
+  html += renderAssumptions(primaryService, cheapestIntl, vatMultiplier, roadToll, safeZone, zoneCount);
 
-  md += `## Recommended Shipping Rates
+  // 7) Timestamp
+  html += `<p class="report-timestamp">Generated ${new Date().toISOString().replace('T', ' ').replace(/\.\d+Z/, ' UTC')}</p>`;
 
-### Norway (includes ${Math.round((vatMultiplier - 1) * 100)}% VAT)
+  // ── CLI summary ──────────────────────────────────────────────────────────
 
-**Zone 1 (Oslo area) — optimistic pricing:**
+  let cli = '\n=== Recommended Shipping Rates ===\n\n';
 
-| Weight Tier | Cost ex VAT | + Road Toll | With ${Math.round((vatMultiplier - 1) * 100)}% VAT |
-|-------------|-------------|-------------|---------------|
-`;
-
-  for (const tier of weightTiers) {
-    const zone1Rate = domesticRates.find(r => r.zone === '1' && String(r.weight_g) === tier.key);
-    if (zone1Rate) {
-      const price = parseFloat(zone1Rate.price_nok);
-      const withToll = price + roadToll;
-      const withVat = Math.ceil(withToll * vatMultiplier);
-      md += `| ${tier.name} | ${price.toFixed(2)} NOK | ${withToll.toFixed(2)} NOK | ${withVat} NOK |\n`;
-    }
+  cli += '  Norway\n';
+  for (const r of norwayRates) {
+    cli += `    ${r.name.padEnd(12)} ${r.price != null ? r.price + ' kr' : 'N/A'}\n`;
   }
 
-  md += `\n**Zone ${safeZone} (Bergen/mid-Norway) — safer, covers most of Norway:**
-
-| Weight Tier | Cost ex VAT | + Road Toll | With ${Math.round((vatMultiplier - 1) * 100)}% VAT |
-|-------------|-------------|-------------|---------------|
-`;
-
-  for (const tier of weightTiers) {
-    const safeZoneRate = domesticRates.find(r => r.zone === safeZone && String(r.weight_g) === tier.key);
-    if (safeZoneRate) {
-      const price = parseFloat(safeZoneRate.price_nok);
-      const withToll = price + roadToll;
-      const withVat = Math.ceil(withToll * vatMultiplier);
-      md += `| ${tier.name} | ${price.toFixed(2)} NOK | ${withToll.toFixed(2)} NOK | ${withVat} NOK |\n`;
-    }
+  cli += `\n  ${nordicCountryList}\n`;
+  for (const r of nordicRates) {
+    cli += `    ${r.name.padEnd(12)} ${r.price} kr\n`;
   }
 
-  // International recommendations
-  const intlWeightColumns = analysis.internationalWeightColumns;
-  const intlWeightHeaders = intlWeightColumns.map(w => {
-    const grams = parseInt(w, 10);
-    return grams >= 1000 ? `${grams / 1000}kg` : `${grams}g`;
-  });
-
-  md += `\n### International (no VAT)
-
-| Country | ${intlWeightHeaders.join(' | ')} |
-|---------|${intlWeightHeaders.map(() => '------').join('|')}|
-`;
-
-  for (const [code, name] of Object.entries(countryNames)) {
-    const cells = intlWeightColumns.map(w => {
-      const rate = rates.find(r =>
-        r.country_code === code &&
-        r.service_id === cheapestIntl &&
-        String(r.weight_g) === w
-      );
-      return rate ? `${Math.ceil(parseFloat(rate.price_nok))} NOK` : 'N/A';
-    });
-    md += `| ${name} | ${cells.join(' | ')} |\n`;
+  cli += `\n  ${remoteCountryList}\n`;
+  for (const r of remoteRates) {
+    cli += `    ${r.name.padEnd(12)} ${r.price} kr\n`;
   }
 
-  // Full zone pricing table for primary domestic service
-  const zonePricingCols = analysis.zonePricingColumns;
-  const zonePricingHeaders = zonePricingCols.map(w => {
-    const grams = parseInt(w, 10);
-    return grams >= 1000 ? `${grams / 1000}kg` : `${grams}g`;
-  });
+  cli += `\n  Norway: Zone ${safeZone} pricing, incl. road toll + ${vatPct}% VAT.`;
+  cli += `\n  International: ${cheapestIntl}, no VAT. Grouped by highest rate.\n`;
 
-  md += `\n## Norway Zone Pricing (Service ${primaryService})
-
-| Zone | ${zonePricingHeaders.join(' | ')} |
-|------|${zonePricingHeaders.map(() => '------').join('|')}|
-`;
-
-  for (let zone = 1; zone <= zoneCount; zone++) {
-    const zoneStr = String(zone);
-    const cells = zonePricingCols.map(w => {
-      const rate = domesticRates.find(r => r.zone === zoneStr && String(r.weight_g) === w);
-      return rate ? `${parseFloat(rate.price_nok).toFixed(2)} NOK` : 'N/A';
-    });
-    md += `| ${zone} | ${cells.join(' | ')} |\n`;
+  if (profitability && profitability.totalShipments > 0) {
+    const sign = profitability.avgMarginAll >= 0 ? '+' : '';
+    cli += `\n  Profitability: ${profitability.totalShipments} shipments, `;
+    cli += `avg margin ${sign}${fmtNok(profitability.avgMarginAll)}/parcel, `;
+    cli += `${profitability.lossMaking.length} loss-making.\n`;
   }
 
-  // Suggested Shopify rates — simplified tiers
-  const shopifyBrackets = analysis.domesticShopifyBrackets.map(b => ({
-    name: b.name,
-    weight: b.rateWeight,
-  }));
-  const zonesForTable = analysis.zonesForShopifyTable;
-  const zoneLabels = { '1': 'Oslo', '3': 'Bergen', '7': 'Finnmark' };
+  cli += '\n  Open the web UI for the full report with drill-down details.\n';
 
-  md += `\n## Suggested Shopify Rates
-
-Prices rounded up to the next "nice" price ending in 9.
-
-### Norway — Service ${primaryService} (incl. road toll + ${Math.round((vatMultiplier - 1) * 100)}% VAT)
-
-| Weight | ${zonesForTable.map(z => `Zone ${z} (${zoneLabels[z] || z})`).join(' | ')} |
-|--------|${zonesForTable.map(() => '-------------------').join('|')}|
-`;
-
-  for (const bracket of shopifyBrackets) {
-    const cells = zonesForTable.map(zone => {
-      const rate = domesticRates.find(r => r.zone === zone && String(r.weight_g) === bracket.weight);
-      if (!rate) return 'N/A';
-      return `${nicePrice(Math.ceil((parseFloat(rate.price_nok) + roadToll) * vatMultiplier))} kr`;
-    });
-    md += `| ${bracket.name} | ${cells.join(' | ')} |\n`;
-  }
-
-  // International Shopify brackets
-  const intlShopifyBrackets = analysis.internationalShopifyBrackets;
-
-  md += `\n### International — ${cheapestIntl} (no VAT)
-
-${cheapestIntl} has a minimum price that covers all packages up to 1 kg, so only two weight brackets are needed.
-
-| Country | ${intlShopifyBrackets.map(b => b.name).join(' | ')} |
-|---------|${intlShopifyBrackets.map(() => '-------').join('|')}|
-`;
-
-  for (const [code, name] of Object.entries(countryNames)) {
-    const cells = intlShopifyBrackets.map(b => {
-      const rate = rates.find(r =>
-        r.country_code === code &&
-        r.service_id === cheapestIntl &&
-        String(r.weight_g) === b.weight
-      );
-      return rate ? `${nicePrice(Math.ceil(parseFloat(rate.price_nok)))} kr` : 'N/A';
-    });
-    md += `| ${name} | ${cells.join(' | ')} |\n`;
-  }
-
-  // Simplified recommendation
-  // Group Nordics and remote — use the highest price in each group
-  const intlBracketWeights = intlShopifyBrackets.map(b => b.weight);
-  const nordicMax = {};
-  const remoteMax = {};
-  for (const w of intlBracketWeights) {
-    const nordicPrices = nordicCodes.map(code => {
-      const r = rates.find(r => r.country_code === code && r.service_id === cheapestIntl && String(r.weight_g) === w);
-      return r ? Math.ceil(parseFloat(r.price_nok)) : 0;
-    });
-    nordicMax[w] = nicePrice(Math.max(...nordicPrices));
-
-    const remotePrices = remoteCodes.map(code => {
-      const r = rates.find(r => r.country_code === code && r.service_id === cheapestIntl && String(r.weight_g) === w);
-      return r ? Math.ceil(parseFloat(r.price_nok)) : 0;
-    });
-    remoteMax[w] = nicePrice(Math.max(...remotePrices));
-  }
-
-  // Safe default zone pricing for Norway
-  const norwaySimple = shopifyBrackets.map(b => {
-    const rate = domesticRates.find(r => r.zone === safeZone && String(r.weight_g) === b.weight);
-    return rate ? `${nicePrice(Math.ceil((parseFloat(rate.price_nok) + roadToll) * vatMultiplier))} kr` : 'N/A';
-  });
-
-  const nordicCountryList = nordicCodes.map(c => countryNames[c]).filter(Boolean).join(' / ');
-  const remoteCountryList = remoteCodes.map(c => countryNames[c]).filter(Boolean).join(' / ');
-
-  md += `\n### Simplified recommendation
-
-| Destination | ${shopifyBrackets.map(b => b.name).join(' | ')} |
-|-------------|${shopifyBrackets.map(() => '----------').join('|')}|
-| Norway | ${norwaySimple.join(' | ')} |
-| ${nordicCountryList} | ${intlBracketWeights.map(w => `${nordicMax[w]} kr`).join(' | ')} |
-| ${remoteCountryList} | ${intlBracketWeights.map(w => `${remoteMax[w]} kr`).join(' | ')} |
-
-Norway uses Zone ${safeZone} pricing (covers most of the country). Nordic and remote groups use the highest price in each group so you never lose money.
-International only needs two Shopify weight brackets (${intlShopifyBrackets.map(b => b.name).join(' and ')}) since ${cheapestIntl} pricing is flat up to 1 kg.
-
-`;
-
-  md += generateProfitabilitySection(lineItems, rates, roadToll);
-
-  md += `## Notes
-
-- **Zone risk**: Zone 1 prices are cheapest. Shipping to Zone ${zoneCount} (Finnmark) costs roughly 2x Zone 1.
-- **Weight limits**: ${primaryService} max 5kg, ${cheapestIntl} max 20kg
-- **Road toll**: ~${roadToll} NOK per Norway shipment (avg from invoices, included in recommendations above)
-- **Zone numbers can differ per service** for the same postal code — the zone table above is for service ${primaryService} only
-`;
-
-  return md;
+  return { html, cli };
 }
 
+// ── Section renderers ────────────────────────────────────────────────────────
+
+function renderHeroSection(
+  norwayRates, nordicRates, remoteRates,
+  nordicCountryList, remoteCountryList,
+  shopifyBrackets, intlShopifyBrackets,
+  vatPct, roadToll, safeZone, primaryService, cheapestIntl,
+) {
+  const domesticColCount = shopifyBrackets.length;
+  const intlColCount = intlShopifyBrackets.length;
+  const firstColSpan = domesticColCount - intlColCount + 1;
+
+  let h = `<div class="report-hero">`;
+  h += `<h2>Recommended Shipping Rates</h2>`;
+  h += `<p class="report-subtitle">Suggested customer-facing prices for your online store.</p>`;
+
+  h += `<table class="rate-card">`;
+  h += `<thead><tr><th>Destination</th>`;
+  for (const b of shopifyBrackets) h += `<th>${esc(b.name)}</th>`;
+  h += `</tr></thead>`;
+
+  h += `<tbody>`;
+
+  // Norway row
+  h += `<tr><td>Norway</td>`;
+  for (const r of norwayRates) {
+    h += `<td>${r.price != null ? r.price + ' kr' : 'N/A'}</td>`;
+  }
+  h += `</tr>`;
+
+  // Nordic row
+  h += `<tr><td>${esc(nordicCountryList)}</td>`;
+  h += `<td colspan="${firstColSpan}">${nordicRates[0].price} kr</td>`;
+  for (let i = 1; i < nordicRates.length; i++) {
+    h += `<td>${nordicRates[i].price} kr</td>`;
+  }
+  h += `</tr>`;
+
+  // Remote row
+  h += `<tr><td>${esc(remoteCountryList)}</td>`;
+  h += `<td colspan="${firstColSpan}">${remoteRates[0].price} kr</td>`;
+  for (let i = 1; i < remoteRates.length; i++) {
+    h += `<td>${remoteRates[i].price} kr</td>`;
+  }
+  h += `</tr>`;
+
+  h += `</tbody></table>`;
+
+  h += `<p class="report-note">`;
+  h += `Norway: Service ${esc(primaryService)}, Zone ${esc(safeZone)} pricing, incl. road toll (~${roadToll} NOK) + ${vatPct}% VAT.<br>`;
+  h += `International: ${esc(cheapestIntl)}, no VAT. Regions use the highest rate in each group.<br>`;
+  h += `Prices rounded up to the nearest 9.`;
+  h += `</p>`;
+
+  h += `</div>`;
+  return h;
+}
+
+function renderKpis(prof, roadToll, sortedProducts) {
+  const totalInvoiceShipments = sortedProducts.reduce((sum, [, s]) => sum + s.count, 0);
+  const lossPct = prof.totalShipments > 0
+    ? ((prof.lossMaking.length / prof.totalShipments) * 100).toFixed(0)
+    : '0';
+
+  let h = `<div class="report-kpis">`;
+
+  h += `<div class="kpi">`;
+  h += `<span class="kpi-value">${totalInvoiceShipments}</span>`;
+  h += `<span class="kpi-label">Shipments in invoices</span>`;
+  h += `</div>`;
+
+  h += `<div class="kpi">`;
+  h += `<span class="kpi-value">${roadToll.toFixed(2)} NOK</span>`;
+  h += `<span class="kpi-label">Avg road toll</span>`;
+  h += `</div>`;
+
+  const marginClass = prof.marginPct >= 0 ? 'kpi-positive' : 'kpi-negative';
+  h += `<div class="kpi ${marginClass}">`;
+  h += `<span class="kpi-value">${prof.marginPct >= 0 ? '+' : ''}${prof.marginPct.toFixed(1)}%</span>`;
+  h += `<span class="kpi-label">Overall margin</span>`;
+  h += `</div>`;
+
+  const lossClass = prof.lossMaking.length > 0 ? 'kpi-negative' : 'kpi-positive';
+  h += `<div class="kpi ${lossClass}">`;
+  h += `<span class="kpi-value">${lossPct}%</span>`;
+  h += `<span class="kpi-label">Loss-making (${prof.lossMaking.length}/${prof.totalShipments})</span>`;
+  h += `</div>`;
+
+  h += `</div>`;
+  return h;
+}
+
+function renderNorwayZoneDetails(domesticRates, roadToll, vatMultiplier, shopifyBrackets, primaryService, safeZone, zoneCount) {
+  const zonesForTable = analysis.zonesForShopifyTable;
+  const zoneLabels = { '1': 'Oslo', '3': 'Bergen', '7': 'Finnmark' };
+  const vatPct = Math.round((vatMultiplier - 1) * 100);
+
+  let h = `<details class="report-details">`;
+  h += `<summary>Norway zone pricing &mdash; compare zones 1&ndash;${zoneCount}</summary>`;
+  h += `<div class="report-details-body">`;
+
+  // Shopify rates by zone
+  h += `<h4>Customer rates by zone (incl. road toll + ${vatPct}% VAT)</h4>`;
+  h += `<table><thead><tr><th>Weight bracket</th>`;
+  for (const z of zonesForTable) h += `<th>Zone ${z} (${zoneLabels[z] || z})</th>`;
+  h += `</tr></thead><tbody>`;
+
+  for (const bracket of shopifyBrackets) {
+    h += `<tr><td>${esc(bracket.name)}</td>`;
+    for (const zone of zonesForTable) {
+      const rate = domesticRates.find(r => r.zone === zone && String(r.weight_g) === bracket.rateWeight);
+      if (rate) {
+        const price = nicePrice(Math.ceil((parseFloat(rate.price_nok) + roadToll) * vatMultiplier));
+        h += `<td>${price} kr</td>`;
+      } else {
+        h += `<td>N/A</td>`;
+      }
+    }
+    h += `</tr>`;
+  }
+  h += `</tbody></table>`;
+
+  // Full zone pricing matrix
+  const zonePricingCols = analysis.zonePricingColumns;
+
+  h += `<h4>Full zone pricing (ex VAT, ex road toll) &mdash; Service ${esc(primaryService)}</h4>`;
+  h += `<table><thead><tr><th>Zone</th>`;
+  for (const w of zonePricingCols) h += `<th>${fmtWeight(w)}</th>`;
+  h += `</tr></thead><tbody>`;
+
+  for (let zone = 1; zone <= zoneCount; zone++) {
+    const z = String(zone);
+    h += `<tr><td>${zone}</td>`;
+    for (const w of zonePricingCols) {
+      const rate = domesticRates.find(r => r.zone === z && String(r.weight_g) === w);
+      h += `<td>${rate ? fmtNok(parseFloat(rate.price_nok)) : 'N/A'}</td>`;
+    }
+    h += `</tr>`;
+  }
+  h += `</tbody></table>`;
+
+  h += `<p class="report-note">Zone 1 (Oslo) is cheapest. Zone ${zoneCount} (Finnmark) costs roughly 2&times; Zone 1. The recommended rates above use Zone ${safeZone} as a safe middle ground.</p>`;
+
+  h += `</div></details>`;
+  return h;
+}
+
+function renderInternationalDetails(rates, countryNames, cheapestIntl) {
+  const intlWeightColumns = analysis.internationalWeightColumns;
+
+  let h = `<details class="report-details">`;
+  h += `<summary>International rates per country &mdash; ${esc(cheapestIntl)}</summary>`;
+  h += `<div class="report-details-body">`;
+
+  h += `<table><thead><tr><th>Country</th>`;
+  for (const w of intlWeightColumns) h += `<th>${fmtWeight(w)}</th>`;
+  h += `</tr></thead><tbody>`;
+
+  for (const [code, name] of Object.entries(countryNames)) {
+    h += `<tr><td>${esc(name)}</td>`;
+    for (const w of intlWeightColumns) {
+      const rate = rates.find(r => r.country_code === code && r.service_id === cheapestIntl && String(r.weight_g) === w);
+      h += `<td>${rate ? Math.ceil(parseFloat(rate.price_nok)) + ' NOK' : 'N/A'}</td>`;
+    }
+    h += `</tr>`;
+  }
+  h += `</tbody></table>`;
+
+  h += `<p class="report-note">Raw agreement prices, no VAT. These are the actual rates from your Bring contract.</p>`;
+
+  h += `</div></details>`;
+  return h;
+}
+
+function renderProfitabilityDetails(prof, safeZone, primaryService) {
+  let h = `<details class="report-details">`;
+  h += `<summary>Profitability analysis &mdash; ${prof.totalShipments} shipments</summary>`;
+  h += `<div class="report-details-body">`;
+
+  h += `<p>Based on ${prof.totalShipments} domestic shipments (service ${esc(primaryService)}) from invoice data, `;
+  h += `projected against the recommended customer rates (Zone ${esc(safeZone)} pricing).</p>`;
+
+  // Per-bracket summary
+  h += `<h4>Per-bracket summary</h4>`;
+  h += `<table><thead><tr>`;
+  h += `<th>Bracket</th><th>Shipments</th><th>Avg cost</th><th>Customer rate</th><th>Revenue ex VAT</th><th>Avg margin</th><th>Total margin</th>`;
+  h += `</tr></thead><tbody>`;
+
+  for (const bracket of prof.brackets) {
+    const n = bracket.shipments.length;
+    if (n === 0) {
+      h += `<tr><td>${esc(bracket.name)}</td><td>0</td><td>&mdash;</td>`;
+      h += `<td>${bracket.shopifyPrice != null ? bracket.shopifyPrice + ' kr' : 'N/A'}</td>`;
+      h += `<td>${bracket.revenueExVat != null ? fmtNok(bracket.revenueExVat) : 'N/A'}</td>`;
+      h += `<td>&mdash;</td><td>&mdash;</td></tr>`;
+      continue;
+    }
+
+    const marginCls = bracket.avgMargin >= 0 ? 'margin-positive' : 'margin-negative';
+    const sign = bracket.avgMargin >= 0 ? '+' : '';
+    const totalSign = bracket.totalMargin >= 0 ? '+' : '';
+
+    h += `<tr>`;
+    h += `<td>${esc(bracket.name)}</td>`;
+    h += `<td>${n}</td>`;
+    h += `<td>${fmtNok(bracket.avgCost)}</td>`;
+    h += `<td>${bracket.shopifyPrice} kr</td>`;
+    h += `<td>${fmtNok(bracket.revenueExVat)}</td>`;
+    h += `<td class="${marginCls}">${sign}${fmtNok(bracket.avgMargin)}</td>`;
+    h += `<td class="${marginCls}">${totalSign}${fmtNok(bracket.totalMargin)}</td>`;
+    h += `</tr>`;
+  }
+
+  // Total row
+  const totalCls = prof.grandTotalMargin >= 0 ? 'margin-positive' : 'margin-negative';
+  const avgSign = prof.avgMarginAll >= 0 ? '+' : '';
+  const totalSign = prof.grandTotalMargin >= 0 ? '+' : '';
+
+  h += `<tr class="total-row">`;
+  h += `<td><strong>Total</strong></td>`;
+  h += `<td><strong>${prof.totalShipments}</strong></td>`;
+  h += `<td></td><td></td><td></td>`;
+  h += `<td class="${totalCls}"><strong>${avgSign}${fmtNok(prof.avgMarginAll)}/parcel</strong></td>`;
+  h += `<td class="${totalCls}"><strong>${totalSign}${fmtNok(prof.grandTotalMargin)}</strong></td>`;
+  h += `</tr>`;
+  h += `</tbody></table>`;
+
+  h += `<p class="report-note">Overall margin: ${prof.marginPct.toFixed(1)}% of revenue ex VAT.</p>`;
+
+  // Worst case per bracket
+  h += `<h4>Worst-case shipment per bracket</h4>`;
+  h += `<p class="report-note">The most expensive shipment in each bracket &mdash; your floor for margin evaluation.</p>`;
+  h += `<table><thead><tr><th>Bracket</th><th>City</th><th>Weight</th><th>Cost</th><th>Revenue ex VAT</th><th>Margin</th></tr></thead><tbody>`;
+
+  for (const bracket of prof.brackets) {
+    if (bracket.shipments.length === 0) continue;
+    const worst = bracket.shipments.reduce((a, b) => a.totalCost > b.totalCost ? a : b);
+    const cls = worst.margin >= 0 ? 'margin-positive' : 'margin-negative';
+    const sign = worst.margin >= 0 ? '+' : '';
+    h += `<tr>`;
+    h += `<td>${esc(bracket.name)}</td>`;
+    h += `<td>${esc(worst.toCity)}</td>`;
+    h += `<td>${worst.weight} kg</td>`;
+    h += `<td>${fmtNok(worst.totalCost)}</td>`;
+    h += `<td>${fmtNok(bracket.revenueExVat)}</td>`;
+    h += `<td class="${cls}">${sign}${fmtNok(worst.margin)}</td>`;
+    h += `</tr>`;
+  }
+  h += `</tbody></table>`;
+
+  // Loss-making shipments
+  if (prof.lossMaking.length > 0) {
+    h += `<h4>Loss-making shipments (${prof.lossMaking.length} of ${prof.totalShipments})</h4>`;
+
+    const topN = 10;
+    const showInline = prof.lossMaking.slice(0, topN);
+    const hasMore = prof.lossMaking.length > topN;
+
+    h += `<p class="report-note">Shipments where Zone ${safeZone} pricing doesn't fully cover costs. Showing worst ${Math.min(topN, prof.lossMaking.length)}:</p>`;
+    h += renderLossTable(showInline);
+
+    if (hasMore) {
+      h += `<details class="report-details-nested">`;
+      h += `<summary>Show all ${prof.lossMaking.length} loss-making shipments</summary>`;
+      h += `<div class="report-details-body">`;
+      h += renderLossTable(prof.lossMaking);
+      h += `</div></details>`;
+    }
+  } else {
+    h += `<p>All ${prof.totalShipments} shipments would be profitable at the recommended rates.</p>`;
+  }
+
+  h += `</div></details>`;
+  return h;
+}
+
+function renderLossTable(items) {
+  let h = `<table><thead><tr>`;
+  h += `<th>Bracket</th><th>City</th><th>Postal code</th><th>Weight</th><th>Cost</th><th>Revenue ex VAT</th><th>Loss</th>`;
+  h += `</tr></thead><tbody>`;
+
+  for (const s of items) {
+    h += `<tr>`;
+    h += `<td>${esc(s.bracket)}</td>`;
+    h += `<td>${esc(s.toCity)}</td>`;
+    h += `<td>${esc(s.toPostalCode)}</td>`;
+    h += `<td>${s.weight} kg</td>`;
+    h += `<td>${fmtNok(s.totalCost)}</td>`;
+    h += `<td>${fmtNok(s.revenueExVat)}</td>`;
+    h += `<td class="margin-negative">${s.margin.toFixed(2)} NOK</td>`;
+    h += `</tr>`;
+  }
+
+  h += `</tbody></table>`;
+  return h;
+}
+
+function renderInvoiceSummary(sortedProducts) {
+  let h = `<details class="report-details">`;
+  h += `<summary>Invoice data &mdash; shipments by product</summary>`;
+  h += `<div class="report-details-body">`;
+
+  h += `<table><thead><tr>`;
+  h += `<th>Product</th><th>Shipments</th><th>Total paid</th><th>Avg per shipment</th><th>Avg weight</th>`;
+  h += `</tr></thead><tbody>`;
+
+  for (const [product, stats] of sortedProducts) {
+    const avgPrice = (stats.totalAgreement / stats.count).toFixed(2);
+    const avgWeight = stats.weights.length > 0
+      ? (stats.weights.reduce((a, b) => a + b, 0) / stats.weights.length).toFixed(2) + ' kg'
+      : 'N/A';
+
+    h += `<tr>`;
+    h += `<td>${esc(product)}</td>`;
+    h += `<td>${stats.count}</td>`;
+    h += `<td>${fmtNok(stats.totalAgreement)}</td>`;
+    h += `<td>${avgPrice} NOK</td>`;
+    h += `<td>${avgWeight}</td>`;
+    h += `</tr>`;
+  }
+
+  h += `</tbody></table>`;
+  h += `</div></details>`;
+  return h;
+}
+
+function renderAssumptions(primaryService, cheapestIntl, vatMultiplier, roadToll, safeZone, zoneCount) {
+  const vatPct = Math.round((vatMultiplier - 1) * 100);
+
+  let h = `<details class="report-details">`;
+  h += `<summary>Assumptions &amp; methodology</summary>`;
+  h += `<div class="report-details-body">`;
+
+  h += `<table class="assumptions-table"><tbody>`;
+  h += `<tr><th>Domestic service</th><td>${esc(primaryService)} (Home Mailbox Parcel, max 5 kg)</td></tr>`;
+  h += `<tr><th>International service</th><td>${esc(cheapestIntl)} (max 20 kg)</td></tr>`;
+  h += `<tr><th>VAT</th><td>${vatPct}% (Norway only, added to customer-facing rates)</td></tr>`;
+  h += `<tr><th>Road toll</th><td>~${roadToll} NOK per shipment (avg from invoices, Norway only)</td></tr>`;
+  h += `<tr><th>Norway pricing zone</th><td>Zone ${esc(safeZone)} &mdash; covers most of the country. Zone 1 (Oslo) is cheapest, Zone ${zoneCount} (Finnmark) ~2&times; Zone 1</td></tr>`;
+  h += `<tr><th>Price rounding</th><td>Rounded up to next "nice" price ending in 9</td></tr>`;
+  h += `<tr><th>International grouping</th><td>Uses highest rate in each country group so you never lose money on any destination</td></tr>`;
+  h += `<tr><th>Zone caveat</th><td>Zone numbers can differ per service for the same postal code</td></tr>`;
+  h += `</tbody></table>`;
+
+  h += `</div></details>`;
+  return h;
+}
+
+// ── Main ─────────────────────────────────────────────────────────────────────
+
 async function main() {
-  // Ensure DB is initialized
   getDb();
 
   console.log(`Analyzing data from run ${RUN_ID}...\n`);
 
   const rates = getShippingRates(RUN_ID).map(r => ({
     ...r,
-    // Normalize zone: DB may store as "1.0" (float text), need "1"
     zone: r.zone != null ? String(r.zone).replace(/\.0$/, '') : '',
     weight_g: String(r.weight_g),
     price_nok: String(r.price_nok),
@@ -493,18 +686,15 @@ async function main() {
   console.log(`Loaded ${rates.length} shipping rates from DB`);
   console.log(`Loaded ${lineItems.length} invoice line items from DB\n`);
 
-  // Analyze
   const invoiceAnalysis = analyzeInvoices(lineItems);
+  const { html, cli } = generateReport(rates, invoiceAnalysis, lineItems);
 
-  // Generate report
-  const resultsMd = generateResultsMd(rates, invoiceAnalysis, lineItems);
-
-  // Save to database
-  insertAnalysisResult(RUN_ID, resultsMd);
+  // Store HTML in database (column name is results_markdown for compat, content is now HTML)
+  insertAnalysisResult(RUN_ID, html);
   closeDb();
 
-  // Print to stdout for CLI users
-  console.log(resultsMd);
+  // Print compact summary for CLI users
+  console.log(cli);
 }
 
 main().catch(console.error);
