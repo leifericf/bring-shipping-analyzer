@@ -239,16 +239,28 @@ fieldset legend {
 /* Danger zone section for destructive actions */
 .danger-zone {
   margin-top: 3rem;
-  padding: 1.25rem;
+  padding: 0;
   border: 1px solid #f5c2c7;
   border-radius: var(--pico-border-radius);
   background: #fef2f2;
 }
 
-.danger-zone h3 {
+.danger-zone > summary {
+  padding: 0.75rem 1.25rem;
+  cursor: pointer;
+  list-style: revert;
+}
+
+.danger-zone > summary h3 {
+  display: inline;
   font-size: 0.95rem;
   color: #842029;
-  margin-bottom: 0.25rem;
+  margin: 0;
+}
+
+.danger-zone > p,
+.danger-zone > form {
+  padding: 0 1.25rem;
 }
 
 .danger-zone p {
@@ -262,6 +274,7 @@ fieldset legend {
   margin-top: 0;
   padding-top: 0;
   border-top: none;
+  padding-bottom: 1.25rem;
 }
 
 /* -- Details / Summary ----------------------------------------------------- */

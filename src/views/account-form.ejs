@@ -49,8 +49,8 @@
 </form>
 
 <% if (editing) { %>
-  <div class="danger-zone">
-    <h3>Delete account</h3>
+  <details class="danger-zone">
+    <summary><h3>Delete account</h3></summary>
     <p>Permanently delete <strong><%= account.name %></strong> and all associated runs, rates, and invoices.</p>
     <form method="POST" action="/accounts/<%= account.id %>/delete"
           onsubmit="return confirm('Delete this account and all its data? This cannot be undone.')">
@@ -58,5 +58,5 @@
         <button type="submit" class="outline btn-danger">Delete Account</button>
       </div>
     </form>
-  </div>
+  </details>
 <% } %>

@@ -393,8 +393,8 @@
   </script>
 <% } %>
 
-<div class="danger-zone">
-  <h3>Delete this run</h3>
+<details class="danger-zone">
+  <summary><h3>Delete this run</h3></summary>
   <p>This will permanently remove the run and all associated data (rates, invoices, analysis).</p>
   <form method="POST" action="/runs/<%= run.id %>/delete"
         onsubmit="return confirm('Delete this run and all its data? This cannot be undone.')">
@@ -402,4 +402,4 @@
       <button type="submit" class="outline btn-danger">Delete Run</button>
     </div>
   </form>
-</div>
+</details>
