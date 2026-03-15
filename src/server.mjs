@@ -29,13 +29,31 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(express.static(join(__dirname, 'public')));
 
 /**
+ * Format a SQLite datetime string for display.
+ */
+function fmtDate(sqliteDateStr, opts = {}) {
+  const defaults = { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' };
+  return new Date(sqliteDateStr + 'Z').toLocaleDateString('en-GB', { ...defaults, ...opts });
+}
+
+/**
  * Render a view inside the layout.
  */
 function render(res, view, locals = {}) {
   res.render(view, locals, (err, body) => {
     if (err) { console.error(err); return res.status(500).send('Render error'); }
-    res.render('layout', { ...locals, body });
+    res.render('layout', { ...locals, body, fmtDate });
   });
+}
+
+/**
+ * Enrich a run object with its account name (if it has an account).
+ */
+function enrichRunWithAccountName(run) {
+  if (run.account_id) {
+    const account = getAccount(run.account_id);
+    run.account_name = account ? account.name : null;
+  }
 }
 
 /**
@@ -179,12 +197,7 @@ app.post('/accounts/:id/runs', (req, res) => {
 app.get('/runs/:id', (req, res) => {
   const run = getRun(Number(req.params.id));
   if (!run) return res.status(404).send('Run not found');
-
-  // If run has an account, get the name
-  if (run.account_id) {
-    const account = getAccount(run.account_id);
-    run.account_name = account ? account.name : null;
-  }
+  enrichRunWithAccountName(run);
 
   let resultsHtml = null;
   if (run.status === 'completed') {
@@ -224,10 +237,7 @@ app.get('/runs/:id/invoices', (req, res) => {
   const run = getRun(Number(req.params.id));
   if (!run) return res.status(404).send('Run not found');
 
-  if (run.account_id) {
-    const account = getAccount(run.account_id);
-    run.account_name = account ? account.name : null;
-  }
+  enrichRunWithAccountName(run);
 
   const invoices = getInvoices(run.id);
   render(res, 'invoices', { title: 'Invoices — Run #' + run.id, run, invoices });

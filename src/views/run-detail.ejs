@@ -21,7 +21,7 @@
   </div>
   <div class="run-meta-item">
     <span class="run-meta-label">Date</span>
-    <span class="run-meta-value"><%= new Date(run.created_at + 'Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) %></span>
+    <span class="run-meta-value"><%= fmtDate(run.created_at) %></span>
   </div>
   <div class="run-meta-item">
     <span class="run-meta-label">Status</span>

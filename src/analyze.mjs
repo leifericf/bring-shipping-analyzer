@@ -349,6 +349,9 @@ function generateReport(rates, invoiceAnalysis, lineItems) {
     serviceNames[svc.id] = svc.name;
   }
 
+  // Derived values used by multiple renderers
+  const usedServices = [...new Set(shopifyBrackets.map(b => b.serviceId || primaryService))];
+
   // ── Compute recommended rates ────────────────────────────────────────────
 
   const norwayRates = shopifyBrackets.map(b => {
@@ -389,12 +392,12 @@ function generateReport(rates, invoiceAnalysis, lineItems) {
   let html = '';
 
   // 1) Hero: Recommended Rates
-  html += renderHeroSection(
-    norwayRates, intlZones, countryNames, rates,
+  html += renderHeroSection({
+    norwayRates, intlZones, countryNames, allRates: rates,
     shopifyBrackets, intlShopifyBrackets,
     vatPct, roadToll, safeZone, primaryService, cheapestIntl,
-    serviceNames, volume,
-  );
+    serviceNames, usedServices, volume,
+  });
 
   // 2) KPI tiles
   if (profitability && profitability.totalShipments > 0) {
@@ -402,7 +405,7 @@ function generateReport(rates, invoiceAnalysis, lineItems) {
   }
 
   // 3) Drill-down: Rate breakdown
-  html += renderNorwayZoneDetails(allDomesticRates, roadToll, vatMultiplier, shopifyBrackets, primaryService, safeZone, zoneCount, serviceNames);
+  html += renderNorwayZoneDetails(allDomesticRates, roadToll, vatMultiplier, vatPct, usedServices, shopifyBrackets, primaryService, safeZone, zoneCount, serviceNames);
   html += renderInternationalDetails(rates, countryNames, cheapestIntl, serviceNames);
 
   // 4) Drill-down: Profitability
@@ -416,7 +419,7 @@ function generateReport(rates, invoiceAnalysis, lineItems) {
   }
 
   // 6) Assumptions
-  html += renderAssumptions(primaryService, cheapestIntl, vatMultiplier, roadToll, safeZone, zoneCount, shopifyBrackets, serviceNames);
+  html += renderAssumptions(primaryService, cheapestIntl, vatPct, roadToll, safeZone, zoneCount, usedServices, shopifyBrackets, serviceNames);
 
   // 7) Timestamp
   html += `<p class="report-timestamp">Generated ${new Date().toISOString().replace('T', ' ').replace(/\.\d+Z/, ' UTC')}</p>`;
@@ -442,7 +445,6 @@ function generateReport(rates, invoiceAnalysis, lineItems) {
 
   // ── CLI summary ──────────────────────────────────────────────────────────
 
-  const usedServices = [...new Set(norwayRates.map(r => r.serviceId))];
   const multiService = usedServices.length > 1;
 
   let cli = '\n=== Recommended Shipping Rates ===\n\n';
@@ -488,13 +490,12 @@ function generateReport(rates, invoiceAnalysis, lineItems) {
 
 // ── Section renderers ────────────────────────────────────────────────────────
 
-function renderHeroSection(
+function renderHeroSection({
   norwayRates, intlZones, countryNames, allRates,
   shopifyBrackets, intlShopifyBrackets,
   vatPct, roadToll, safeZone, primaryService, cheapestIntl,
-  serviceNames, volume,
-) {
-  const usedServices = [...new Set(shopifyBrackets.map(b => b.serviceId || primaryService))];
+  serviceNames, usedServices, volume,
+}) {
 
   // For each international zone, compute prices at domestic bracket weights
   // so the unified table has one price per column per zone.
@@ -641,10 +642,9 @@ function renderKpis(prof, roadToll, sortedProducts) {
   return h;
 }
 
-function renderNorwayZoneDetails(allDomesticRates, roadToll, vatMultiplier, shopifyBrackets, primaryService, safeZone, zoneCount, serviceNames) {
+function renderNorwayZoneDetails(allDomesticRates, roadToll, vatMultiplier, vatPct, usedServices, shopifyBrackets, primaryService, safeZone, zoneCount, serviceNames) {
   const zonesForTable = analysis.zonesForShopifyTable;
   const zoneLabels = { '1': 'Oslo', '3': 'Bergen', '7': 'Finnmark' };
-  const vatPct = Math.round((vatMultiplier - 1) * 100);
 
   let h = `<details class="report-details">`;
   h += `<summary>Norway zone pricing &mdash; compare zones 1&ndash;${zoneCount}</summary>`;
@@ -673,8 +673,6 @@ function renderNorwayZoneDetails(allDomesticRates, roadToll, vatMultiplier, shop
   h += `</tbody></table>`;
 
   // Full zone pricing per service
-  const usedServices = [...new Set(shopifyBrackets.map(b => b.serviceId || primaryService))];
-
   for (const svcId of usedServices) {
     const svcName = serviceNames[svcId] || svcId;
     const svcBrackets = shopifyBrackets.filter(b => (b.serviceId || primaryService) === svcId);
@@ -896,9 +894,7 @@ function renderInvoiceSummary(sortedProducts) {
   return h;
 }
 
-function renderAssumptions(primaryService, cheapestIntl, vatMultiplier, roadToll, safeZone, zoneCount, shopifyBrackets, serviceNames) {
-  const vatPct = Math.round((vatMultiplier - 1) * 100);
-  const usedServices = [...new Set(shopifyBrackets.map(b => b.serviceId || primaryService))];
+function renderAssumptions(primaryService, cheapestIntl, vatPct, roadToll, safeZone, zoneCount, usedServices, shopifyBrackets, serviceNames) {
 
   let h = `<details class="report-details">`;
   h += `<summary>Assumptions &amp; methodology</summary>`;

@@ -69,7 +69,7 @@
                 <% } %>
               </td>
               <td><code><%= run.customer_number %></code></td>
-              <td><%= new Date(run.created_at + 'Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) %></td>
+              <td><%= fmtDate(run.created_at) %></td>
               <td><span class="status status-<%= run.status %>"><%= run.status.replace(/_/g, ' ') %></span></td>
               <td><a href="/runs/<%= run.id %>">View</a></td>
             </tr>
