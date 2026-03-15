@@ -536,7 +536,7 @@ details summary:hover {
 }
 
 .run-meta-label {
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--pico-muted-color);
@@ -739,7 +739,7 @@ details summary:hover {
 
 .kpi-label {
   display: block;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   color: var(--pico-muted-color);
   margin-top: 0.25rem;
   text-transform: uppercase;
@@ -748,7 +748,7 @@ details summary:hover {
 
 .kpi-note {
   display: block;
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   color: var(--pico-muted-color);
   margin-top: 0.15rem;
   font-style: italic;
@@ -799,7 +799,7 @@ details summary:hover {
 
 .report-details-body table th,
 .report-details-body table td {
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
   padding: 0.35rem 0.5rem;
 }
@@ -989,7 +989,7 @@ details summary:hover {
 
 #sim-table-wrap table th,
 #sim-table-wrap table td {
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   padding: 0.35rem 0.5rem;
   font-variant-numeric: tabular-nums;
 }
