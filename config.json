@@ -58,7 +58,9 @@
     "internationalWeightColumns": ["250", "750", "1000", "5000", "10000", "20000"],
     "internationalShopifyBrackets": [
       { "name": "0\u20131 kg", "weight": "250" },
-      { "name": "1 kg+", "weight": "5000" }
+      { "name": "1\u20135 kg", "weight": "5000" },
+      { "name": "5\u201310 kg", "weight": "10000" },
+      { "name": "10\u201320 kg", "weight": "20000" }
     ],
     "zonePricingColumns": ["250", "750", "1000", "5000"],
     "zonesForShopifyTable": ["1", "3", "7"]

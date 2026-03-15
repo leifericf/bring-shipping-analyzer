@@ -326,7 +326,7 @@ function generateReport(rates, invoiceAnalysis, lineItems) {
 
   // 1) Hero: Recommended Rates
   html += renderHeroSection(
-    norwayRates, intlZones, countryNames,
+    norwayRates, intlZones, countryNames, rates,
     shopifyBrackets, intlShopifyBrackets,
     vatPct, roadToll, safeZone, primaryService, cheapestIntl,
     serviceNames,
@@ -399,37 +399,33 @@ function generateReport(rates, invoiceAnalysis, lineItems) {
 // ── Section renderers ────────────────────────────────────────────────────────
 
 function renderHeroSection(
-  norwayRates, intlZones, countryNames,
+  norwayRates, intlZones, countryNames, allRates,
   shopifyBrackets, intlShopifyBrackets,
   vatPct, roadToll, safeZone, primaryService, cheapestIntl,
   serviceNames,
 ) {
   const usedServices = [...new Set(shopifyBrackets.map(b => b.serviceId || primaryService))];
-  const multiService = usedServices.length > 1;
 
-  // Compute colspans for international rows: "0–1 kg" spans light columns, "1 kg+" spans heavy
-  const lightCols = shopifyBrackets.filter(b => (b.maxWeight ?? Infinity) <= 1.0).length;
-  const heavyCols = shopifyBrackets.length - lightCols;
-  const intlColspans = intlShopifyBrackets.length === 2
-    ? [Math.max(lightCols, 1), Math.max(heavyCols, 1)]
-    : intlShopifyBrackets.length === 1
-      ? [shopifyBrackets.length]
-      : intlShopifyBrackets.map(() => 1); // fallback
+  // For each international zone, compute prices at domestic bracket weights
+  // so the unified table has one price per column per zone.
+  const intlZoneDomesticPrices = intlZones.map(zone => {
+    return shopifyBrackets.map(b => {
+      const prices = zone.codes.map(code => {
+        const r = allRates.find(r => r.country_code === code && r.service_id === cheapestIntl && String(r.weight_g) === b.rateWeight);
+        return r ? nicePrice(Math.ceil(parseFloat(r.price_nok))) : null;
+      }).filter(p => p !== null);
+      return prices.length > 0 ? Math.max(...prices) : null;
+    });
+  });
 
   let h = `<div class="report-hero">`;
   h += `<h2>Recommended Shipping Rates</h2>`;
-  h += `<p class="report-subtitle">Suggested customer-facing prices for your online store. ${intlZones.length + 1} shipping zones total (1 domestic + ${intlZones.length} international).</p>`;
+  h += `<p class="report-subtitle">${intlZones.length + 1} shipping zones (1 domestic + ${intlZones.length} international). Ready to use in your online store.</p>`;
 
+  // ── Unified table ────────────────────────────────────────────────────────
   h += `<table class="rate-card">`;
   h += `<thead><tr><th>Destination</th>`;
-  for (const b of shopifyBrackets) {
-    const svcId = b.serviceId || primaryService;
-    if (multiService) {
-      h += `<th>${esc(b.name)}<span class="rate-service">${esc(serviceNames[svcId] || svcId)} (${esc(svcId)})</span></th>`;
-    } else {
-      h += `<th>${esc(b.name)}</th>`;
-    }
-  }
+  for (const b of shopifyBrackets) h += `<th>${esc(b.name)}</th>`;
   h += `</tr></thead>`;
 
   h += `<tbody>`;
@@ -441,30 +437,33 @@ function renderHeroSection(
   }
   h += `</tr>`;
 
-  // International zone rows (auto-clustered)
-  for (const zone of intlZones) {
+  // International zone rows
+  for (let z = 0; z < intlZones.length; z++) {
+    const zone = intlZones[z];
     const zoneLabel = zone.codes.map(c => countryNames[c]).filter(Boolean).join(', ');
     h += `<tr><td>${esc(zoneLabel)}</td>`;
-    for (let i = 0; i < intlShopifyBrackets.length; i++) {
-      h += `<td colspan="${intlColspans[i]}">${zone.rates[i].price != null ? zone.rates[i].price + ' kr' : 'N/A'}</td>`;
+    for (const price of intlZoneDomesticPrices[z]) {
+      h += `<td>${price != null ? price + ' kr' : 'N/A'}</td>`;
     }
     h += `</tr>`;
   }
 
   h += `</tbody></table>`;
 
+  // ── Note ──────────────────────────────────────────────────────────────────
   h += `<p class="report-note">`;
-  if (multiService) {
+  if (usedServices.length > 1) {
     const svcDescs = usedServices.map(id => {
       const brackets = shopifyBrackets.filter(b => (b.serviceId || primaryService) === id);
-      const range = brackets.map(b => b.name).join(' / ');
+      const range = brackets.map(b => b.name).join(', ');
       return `${serviceNames[id] || id} (${id}): ${range}`;
     });
-    h += `Norway: ${svcDescs.join('; ')}. Zone ${esc(safeZone)} pricing, incl. road toll (~${roadToll} kr) + ${vatPct}% VAT.<br>`;
+    h += `Norway: ${svcDescs.join('; ')}. `;
   } else {
-    h += `Norway: ${esc(serviceNames[primaryService] || primaryService)} (${esc(primaryService)}), Zone ${esc(safeZone)} pricing, incl. road toll (~${roadToll} kr) + ${vatPct}% VAT.<br>`;
+    h += `Norway: ${esc(serviceNames[primaryService] || primaryService)} (${esc(primaryService)}). `;
   }
-  h += `International: ${esc(serviceNames[cheapestIntl] || cheapestIntl)} (${esc(cheapestIntl)}), no VAT. Countries grouped by identical customer-facing rates.<br>`;
+  h += `Zone ${esc(safeZone)} pricing, incl. road toll (~${roadToll} kr) + ${vatPct}% VAT.<br>`;
+  h += `International: ${esc(serviceNames[cheapestIntl] || cheapestIntl)} (${esc(cheapestIntl)}), no VAT. Countries grouped by rate similarity.<br>`;
   h += `Prices rounded up to the nearest 9.`;
   h += `</p>`;
 

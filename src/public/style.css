@@ -628,6 +628,8 @@ details summary:hover {
   margin-bottom: 1rem;
 }
 
+
+
 .report-note {
   color: var(--pico-muted-color);
   font-size: 0.8rem;
@@ -661,15 +663,7 @@ details summary:hover {
   font-size: 1.05em;
 }
 
-.rate-service {
-  display: block;
-  font-size: 0.65em;
-  font-weight: normal;
-  color: var(--pico-muted-color);
-  margin-top: 0.1rem;
-  white-space: normal;
-  line-height: 1.3;
-}
+
 
 /* -- Report: KPI tiles ---------------------------------------------------- */
 
