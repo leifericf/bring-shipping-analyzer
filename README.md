@@ -101,6 +101,10 @@ The database is not backed up automatically. If you want to keep a copy, just co
 - **Currency**: All prices are displayed in kr (Norwegian kroner).
 - All Bring APIs used are read-only.
 
+## Disclaimer
+
+This application was vibe coded. No technical support is provided. Use at your own risk.
+
 ## License
 
 [MIT](LICENSE)
