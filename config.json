@@ -52,9 +52,11 @@
       { "name": "1-5kg", "key": "5000" }
     ],
     "domesticShopifyBrackets": [
-      { "name": "0\u20130.5 kg", "maxWeight": 0.5, "rateWeight": "250" },
-      { "name": "0.5\u20131 kg", "maxWeight": 1.0, "rateWeight": "1000" },
-      { "name": "1 kg+", "maxWeight": null, "rateWeight": "5000" }
+      { "name": "0\u20130.5 kg", "maxWeight": 0.5, "rateWeight": "250", "serviceId": "3584" },
+      { "name": "0.5\u20131 kg", "maxWeight": 1.0, "rateWeight": "1000", "serviceId": "3584" },
+      { "name": "1\u20135 kg", "maxWeight": 5.0, "rateWeight": "5000", "serviceId": "3584" },
+      { "name": "5\u201310 kg", "maxWeight": 10.0, "rateWeight": "10000", "serviceId": "5800" },
+      { "name": "10\u201320 kg", "maxWeight": 20.0, "rateWeight": "20000", "serviceId": "5800" }
     ],
     "internationalWeightColumns": ["250", "750", "1000", "5000", "10000", "20000"],
     "internationalShopifyBrackets": [

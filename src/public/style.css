@@ -612,15 +612,15 @@ details summary:hover {
 .rate-card {
   display: table;
   width: auto;
-  white-space: nowrap;
   margin-bottom: 0.5rem;
 }
 
 .rate-card th,
 .rate-card td {
   text-align: center;
-  padding: 0.6rem 1.25rem;
+  padding: 0.5rem 0.75rem;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .rate-card th:first-child,
@@ -630,7 +630,17 @@ details summary:hover {
 
 .rate-card tbody td:not(:first-child) {
   font-weight: 600;
-  font-size: 1.1em;
+  font-size: 1.05em;
+}
+
+.rate-service {
+  display: block;
+  font-size: 0.65em;
+  font-weight: normal;
+  color: var(--pico-muted-color);
+  margin-top: 0.1rem;
+  white-space: normal;
+  line-height: 1.3;
 }
 
 /* -- Report: KPI tiles ---------------------------------------------------- */
@@ -708,13 +718,17 @@ details summary:hover {
   display: table;
   width: 100%;
   margin-bottom: 1rem;
-  white-space: nowrap;
 }
 
 .report-details-body table th,
 .report-details-body table td {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-variant-numeric: tabular-nums;
+  padding: 0.35rem 0.5rem;
+}
+
+.report-details-body table td {
+  white-space: nowrap;
 }
 
 .report-details-body > p {
