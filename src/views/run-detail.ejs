@@ -65,7 +65,17 @@
 
 <% if (run.status === 'failed') { %>
   <article class="run-failed">
-    The pipeline failed. Check the server console for details.
+    <p>The pipeline failed. Check the server console for details.</p>
+    <div class="actions">
+      <% if (run.account_id) { %>
+        <form method="POST" action="/accounts/<%= run.account_id %>/runs">
+          <button type="submit">Start New Run</button>
+        </form>
+        <a href="/accounts/<%= run.account_id %>/runs" role="button" class="outline secondary">Back to Runs</a>
+      <% } else { %>
+        <a href="/" role="button" class="outline secondary">Back to Dashboard</a>
+      <% } %>
+    </div>
   </article>
 <% } %>
 
