@@ -30,7 +30,7 @@
 </div>
 
 <% if (run.status !== 'completed' && run.status !== 'failed') { %>
-  <article class="run-progress" id="progress-box" aria-busy="true">
+  <article class="run-progress" id="progress-box" aria-busy="true" aria-live="polite" role="status">
     Pipeline is running... This page will update automatically.
   </article>
 
@@ -132,9 +132,9 @@
         </div>
 
         <!-- Results -->
-        <div id="sim-kpis" class="report-kpis"></div>
-        <div id="sim-table-wrap"></div>
-        <div id="sim-warnings"></div>
+        <div id="sim-kpis" class="report-kpis" aria-live="polite"></div>
+        <div id="sim-table-wrap" aria-live="polite"></div>
+        <div id="sim-warnings" aria-live="assertive" role="alert"></div>
       </div>
     </div>
 
