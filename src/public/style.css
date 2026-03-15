@@ -656,6 +656,8 @@ details summary:hover {
 .rate-card th:first-child,
 .rate-card td:first-child {
   text-align: left;
+  white-space: normal;
+  max-width: 18rem;
 }
 
 .rate-card tbody td:not(:first-child) {
