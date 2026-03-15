@@ -108,10 +108,9 @@ function buildShipmentProfiles(lineItems) {
  * Groups by the same international zones used in the rate card.
  * Counts all services (not just recommended) for an accurate demand signal.
  */
-function computeShipmentVolume(lineItems, intlZones) {
+function computeShipmentVolume(shipments, intlZones) {
   const originCountry = config.originCountry;
   const shopifyBrackets = analysis.domesticShopifyBrackets;
-  const shipments = buildShipmentProfiles(lineItems);
 
   // Initialize counts: domestic + each intl zone, per bracket
   const domesticCounts = shopifyBrackets.map(() => 0);
@@ -141,12 +140,11 @@ function computeShipmentVolume(lineItems, intlZones) {
 
 // ── Profitability computation ────────────────────────────────────────────────
 
-function computeProfitability(lineItems, rates, roadToll) {
+function computeProfitability(shipments, rates, roadToll) {
   const primaryService = analysis.primaryDomesticService;
   const safeZone = analysis.safeDefaultZone;
   const vatMultiplier = analysis.vatMultiplier;
 
-  const shipments = buildShipmentProfiles(lineItems);
   const allDomesticRates = rates.filter(r => r.country_code === config.originCountry);
 
   const brackets = analysis.domesticShopifyBrackets.map(b => ({
@@ -370,22 +368,19 @@ function generateReport(rates, invoiceAnalysis, lineItems) {
   const intlCodes = Object.keys(countryNames);
   const intlZones = clusterInternationalZones(rates, intlCodes, intlShopifyBrackets, cheapestIntl);
 
-  // ── Compute profitability ────────────────────────────────────────────────
+  // ── Compute profitability & volume ────────────────────────────────────────
 
   const sortedProducts = Object.entries(byProduct)
     .filter(([, stats]) => stats.count > 0)
     .sort((a, b) => b[1].count - a[1].count);
 
   let profitability = null;
+  let volume = null;
   if (lineItems.length > 0) {
-    profitability = computeProfitability(lineItems, rates, roadToll);
+    const shipments = buildShipmentProfiles(lineItems);
+    profitability = computeProfitability(shipments, rates, roadToll);
+    volume = computeShipmentVolume(shipments, intlZones);
   }
-
-  // ── Compute shipment volume ──────────────────────────────────────────────
-
-  const volume = lineItems.length > 0
-    ? computeShipmentVolume(lineItems, intlZones)
-    : null;
 
   // ── Render HTML ──────────────────────────────────────────────────────────
 
