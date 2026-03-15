@@ -31,13 +31,17 @@
       </table>
     </div>
 
+    <!-- Add single destination -->
     <details id="add-dest-details">
       <summary>Add destination</summary>
       <div class="dest-add-form">
         <div class="dest-add-fields">
           <label>
             Country *
-            <input type="text" id="new-country" placeholder="Sweden" required>
+            <div class="autocomplete-wrap">
+              <input type="text" id="new-country" placeholder="Start typing..." autocomplete="off" required>
+              <ul class="autocomplete-list" id="country-suggestions"></ul>
+            </div>
           </label>
           <label>
             Code *
@@ -60,6 +64,62 @@
           <button type="button" id="add-dest-btn">Add Destination</button>
         </div>
         <div class="dest-add-error" id="dest-add-error"></div>
+      </div>
+    </details>
+
+    <!-- Add countries by region -->
+    <details id="add-region-details">
+      <summary>Add countries by region</summary>
+      <div class="dest-add-form">
+        <p class="region-help">
+          Select a region to add all its countries as destinations. Uses the capital city as postal code placeholder.
+          Countries already in your destinations list will be skipped.
+        </p>
+        <div class="region-picker">
+          <label>
+            Region
+            <select id="region-select">
+              <option value="">Choose a region...</option>
+              <optgroup label="Europe">
+                <option value="Northern Europe">Northern Europe</option>
+                <option value="Western Europe">Western Europe</option>
+                <option value="Central Europe">Central Europe</option>
+                <option value="Southern Europe">Southern Europe</option>
+                <option value="Southeast Europe">Southeast Europe</option>
+                <option value="Eastern Europe">Eastern Europe</option>
+              </optgroup>
+              <optgroup label="Other regions">
+                <option value="North America">North America</option>
+                <option value="South America">South America</option>
+                <option value="Central America">Central America</option>
+                <option value="Caribbean">Caribbean</option>
+                <option value="Northern Africa">Northern Africa</option>
+                <option value="Western Africa">Western Africa</option>
+                <option value="Eastern Africa">Eastern Africa</option>
+                <option value="Southern Africa">Southern Africa</option>
+                <option value="Middle Africa">Middle Africa</option>
+                <option value="Western Asia">Western Asia</option>
+                <option value="Central Asia">Central Asia</option>
+                <option value="Southern Asia">Southern Asia</option>
+                <option value="South-Eastern Asia">South-Eastern Asia</option>
+                <option value="Eastern Asia">Eastern Asia</option>
+                <option value="Australia and New Zealand">Australia and New Zealand</option>
+                <option value="Melanesia">Melanesia</option>
+                <option value="Micronesia">Micronesia</option>
+                <option value="Polynesia">Polynesia</option>
+              </optgroup>
+            </select>
+          </label>
+        </div>
+        <div id="region-preview" class="region-preview" style="display:none;">
+          <p id="region-preview-label"></p>
+          <div class="region-country-list" id="region-country-list"></div>
+          <div class="dest-add-actions">
+            <button type="button" id="add-region-btn">Add selected countries</button>
+          </div>
+        </div>
+        <div id="region-loading" style="display:none;" aria-busy="true">Loading countries...</div>
+        <div class="dest-add-error" id="region-error"></div>
       </div>
     </details>
   </section>
@@ -88,6 +148,34 @@
 </form>
 
 <script>
+// ---------------------------------------------------------------------------
+// Country data from REST Countries API
+// ---------------------------------------------------------------------------
+
+let allCountries = []; // { name, code, capital, subregion, region }
+
+async function loadCountries() {
+  try {
+    const resp = await fetch('https://restcountries.com/v3.1/all?fields=name,cca2,capital,subregion,region');
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    allCountries = data
+      .map(c => ({
+        name: c.name.common,
+        code: c.cca2,
+        capital: (c.capital && c.capital[0]) || '',
+        subregion: c.subregion || '',
+        region: c.region || '',
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  } catch (err) {
+    console.warn('Could not load country list from restcountries.com:', err.message);
+  }
+}
+
+// Fire on page load
+loadCountries();
+
 // ---------------------------------------------------------------------------
 // State helpers
 // ---------------------------------------------------------------------------
@@ -119,7 +207,7 @@ function renderDestinations() {
       '<td>' + esc(d.country) + '</td>' +
       '<td><code>' + esc(d.code) + '</code></td>' +
       '<td>' + esc(d.postalCode) + '</td>' +
-      '<td>' + (d.zone != null ? esc(String(d.zone)) : '<span class="muted">—</span>') + '</td>' +
+      '<td>' + (d.zone != null ? esc(String(d.zone)) : '<span class="muted">\u2014</span>') + '</td>' +
       '<td>' + (d.desc ? esc(d.desc) : '') + '</td>' +
       '<td><button type="button" class="outline secondary dest-remove-btn" data-index="' + i + '">Remove</button></td>';
     tbody.appendChild(tr);
@@ -140,7 +228,219 @@ function esc(s) {
 }
 
 // ---------------------------------------------------------------------------
-// Add / Remove
+// Autocomplete for country name
+// ---------------------------------------------------------------------------
+
+(function () {
+  const input = document.getElementById('new-country');
+  const list = document.getElementById('country-suggestions');
+  let activeIdx = -1;
+
+  input.addEventListener('input', function () {
+    const val = this.value.trim().toLowerCase();
+    list.innerHTML = '';
+    activeIdx = -1;
+    if (!val || val.length < 1 || allCountries.length === 0) {
+      list.style.display = 'none';
+      return;
+    }
+    // Match countries: starts-with first, then contains
+    const starts = allCountries.filter(c => c.name.toLowerCase().startsWith(val));
+    const contains = allCountries.filter(c =>
+      !c.name.toLowerCase().startsWith(val) && c.name.toLowerCase().includes(val)
+    );
+    const matches = starts.concat(contains).slice(0, 12);
+    if (matches.length === 0) {
+      list.style.display = 'none';
+      return;
+    }
+    matches.forEach((c, i) => {
+      const li = document.createElement('li');
+      li.textContent = c.name + ' (' + c.code + ')';
+      li.dataset.index = i;
+      li.addEventListener('mousedown', function (e) {
+        e.preventDefault(); // prevent blur before click fires
+        selectCountry(c);
+      });
+      list.appendChild(li);
+    });
+    list.style.display = 'block';
+  });
+
+  input.addEventListener('keydown', function (e) {
+    const items = list.querySelectorAll('li');
+    if (!items.length) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIdx = Math.min(activeIdx + 1, items.length - 1);
+      highlightItem(items);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIdx = Math.max(activeIdx - 1, 0);
+      highlightItem(items);
+    } else if (e.key === 'Enter' && activeIdx >= 0) {
+      e.preventDefault();
+      items[activeIdx].dispatchEvent(new Event('mousedown'));
+    } else if (e.key === 'Escape') {
+      list.style.display = 'none';
+      activeIdx = -1;
+    }
+  });
+
+  function highlightItem(items) {
+    items.forEach((li, i) => {
+      li.classList.toggle('active', i === activeIdx);
+      if (i === activeIdx) li.scrollIntoView({ block: 'nearest' });
+    });
+  }
+
+  input.addEventListener('blur', function () {
+    // Small delay so mousedown on list items can fire first
+    setTimeout(() => { list.style.display = 'none'; }, 150);
+  });
+
+  function selectCountry(c) {
+    input.value = c.name;
+    document.getElementById('new-code').value = c.code;
+    if (c.capital) {
+      document.getElementById('new-desc').value = c.capital;
+    }
+    list.style.display = 'none';
+    activeIdx = -1;
+    // Focus postal code since that's what the user still needs to fill in
+    document.getElementById('new-postal').focus();
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Region-based bulk add
+// ---------------------------------------------------------------------------
+
+document.getElementById('region-select').addEventListener('change', function () {
+  const subregion = this.value;
+  const preview = document.getElementById('region-preview');
+  const loading = document.getElementById('region-loading');
+  const errorEl = document.getElementById('region-error');
+  errorEl.style.display = 'none';
+
+  if (!subregion) {
+    preview.style.display = 'none';
+    return;
+  }
+
+  if (allCountries.length === 0) {
+    loading.style.display = 'block';
+    preview.style.display = 'none';
+    // Retry loading, then re-trigger
+    loadCountries().then(() => {
+      loading.style.display = 'none';
+      if (allCountries.length === 0) {
+        errorEl.textContent = 'Could not load country data from restcountries.com. Check your connection.';
+        errorEl.style.display = 'block';
+      } else {
+        this.dispatchEvent(new Event('change'));
+      }
+    });
+    return;
+  }
+
+  const config = getConfig();
+  const existingCodes = new Set(
+    config && Array.isArray(config.destinations)
+      ? config.destinations.map(d => d.code)
+      : []
+  );
+
+  const regionCountries = allCountries
+    .filter(c => c.subregion === subregion)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  if (regionCountries.length === 0) {
+    errorEl.textContent = 'No countries found for "' + subregion + '".';
+    errorEl.style.display = 'block';
+    preview.style.display = 'none';
+    return;
+  }
+
+  const listEl = document.getElementById('region-country-list');
+  listEl.innerHTML = '';
+
+  regionCountries.forEach(c => {
+    const already = existingCodes.has(c.code);
+    const label = document.createElement('label');
+    label.className = 'region-country-item' + (already ? ' already-added' : '');
+    label.innerHTML =
+      '<input type="checkbox" ' + (already ? 'disabled' : 'checked') + ' value="' + esc(c.code) + '">' +
+      ' ' + esc(c.name) + ' <code>' + esc(c.code) + '</code>' +
+      (c.capital ? ' <small class="muted">' + esc(c.capital) + '</small>' : '') +
+      (already ? ' <small class="muted">(already added)</small>' : '');
+    listEl.appendChild(label);
+  });
+
+  const newCount = regionCountries.filter(c => !existingCodes.has(c.code)).length;
+  document.getElementById('region-preview-label').textContent =
+    subregion + ' \u2014 ' + regionCountries.length + ' countries' +
+    (newCount < regionCountries.length ? ' (' + newCount + ' new)' : '');
+
+  preview.style.display = 'block';
+});
+
+document.getElementById('add-region-btn').addEventListener('click', function () {
+  const errorEl = document.getElementById('region-error');
+  errorEl.style.display = 'none';
+
+  const config = getConfig();
+  if (!config) {
+    errorEl.textContent = 'Cannot add \u2014 underlying JSON is invalid.';
+    errorEl.style.display = 'block';
+    return;
+  }
+  if (!Array.isArray(config.destinations)) config.destinations = [];
+
+  const checkboxes = document.querySelectorAll('#region-country-list input[type="checkbox"]:checked:not(:disabled)');
+  if (checkboxes.length === 0) {
+    errorEl.textContent = 'No countries selected.';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  let added = 0;
+  checkboxes.forEach(cb => {
+    const code = cb.value;
+    const c = allCountries.find(x => x.code === code);
+    if (!c) return;
+    // Skip if this exact code already exists
+    if (config.destinations.find(d => d.code === code)) return;
+    config.destinations.push({
+      country: c.name,
+      code: c.code,
+      postalCode: c.capital || '00000',
+      zone: null,
+      desc: c.capital || null,
+    });
+    added++;
+  });
+
+  setConfig(config);
+  renderDestinations();
+
+  // Reset region picker
+  document.getElementById('region-select').value = '';
+  document.getElementById('region-preview').style.display = 'none';
+
+  if (added > 0) {
+    errorEl.style.display = 'none';
+    // Brief success feedback
+    const btn = document.getElementById('add-region-btn');
+    const orig = btn.textContent;
+    btn.textContent = 'Added ' + added + ' countries';
+    btn.disabled = true;
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Add / Remove single destination
 // ---------------------------------------------------------------------------
 
 function addDest() {
@@ -167,7 +467,7 @@ function addDest() {
 
   const config = getConfig();
   if (!config) {
-    errorEl.textContent = 'Cannot add — underlying JSON is invalid. Fix it in the raw editor first.';
+    errorEl.textContent = 'Cannot add \u2014 underlying JSON is invalid. Fix it in the raw editor first.';
     errorEl.style.display = 'block';
     return;
   }
@@ -202,7 +502,7 @@ function removeDest(index) {
   if (!config || !Array.isArray(config.destinations)) return;
 
   const dest = config.destinations[index];
-  if (!confirm('Remove ' + dest.country + ' — ' + (dest.desc || dest.postalCode) + '?')) return;
+  if (!confirm('Remove ' + dest.country + ' \u2014 ' + (dest.desc || dest.postalCode) + '?')) return;
 
   config.destinations.splice(index, 1);
   setConfig(config);
@@ -230,7 +530,7 @@ function syncTableFromEditor() {
   const errorEl = document.getElementById('config-error');
   const config = getConfig();
   if (!config) {
-    errorEl.textContent = 'Cannot reload — JSON is invalid.';
+    errorEl.textContent = 'Cannot reload \u2014 JSON is invalid.';
     errorEl.style.display = 'block';
     return;
   }
@@ -250,7 +550,7 @@ document.getElementById('config-form').addEventListener('submit', function(e) {
     errorEl.style.display = 'none';
   } catch (err) {
     e.preventDefault();
-    errorEl.textContent = 'Cannot save — invalid JSON: ' + err.message;
+    errorEl.textContent = 'Cannot save \u2014 invalid JSON: ' + err.message;
     errorEl.style.display = 'block';
     // Open the advanced section so the user can see the error
     document.querySelector('details.mt-2').open = true;

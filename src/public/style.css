@@ -243,6 +243,117 @@ fieldset legend {
   display: none;
 }
 
+/* -- Autocomplete ---------------------------------------------------------- */
+
+.autocomplete-wrap {
+  position: relative;
+}
+
+.autocomplete-list {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  margin: -0.25rem 0 0;
+  padding: 0;
+  list-style: none;
+  background: var(--pico-background-color, #fff);
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: var(--pico-border-radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.autocomplete-list li {
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.autocomplete-list li:hover,
+.autocomplete-list li.active {
+  background: var(--pico-primary-background, #e3f2fd);
+}
+
+/* -- Region picker --------------------------------------------------------- */
+
+.region-help {
+  color: var(--pico-muted-color);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.region-picker {
+  max-width: 360px;
+}
+
+.region-picker select {
+  margin-bottom: 0;
+}
+
+.region-preview {
+  margin-top: 1rem;
+}
+
+.region-preview > p {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.region-country-list {
+  column-count: 3;
+  column-gap: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 768px) {
+  .region-country-list { column-count: 2; }
+}
+@media (max-width: 480px) {
+  .region-country-list { column-count: 1; }
+}
+
+/* Reset Pico's aggressive label + checkbox styling */
+.region-country-item {
+  all: unset;
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  cursor: pointer;
+  padding: 0.25rem 0;
+  break-inside: avoid;
+}
+
+.region-country-item input[type="checkbox"] {
+  all: revert;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.region-country-item code {
+  font-size: 0.8em;
+  color: var(--pico-muted-color);
+  background: none;
+  padding: 0;
+}
+
+.region-country-item small {
+  font-size: 0.8em;
+  color: var(--pico-muted-color);
+}
+
+.region-country-item.already-added {
+  opacity: 0.5;
+}
+
 /* -- Run detail ------------------------------------------------------------ */
 
 /* Progress box */
