@@ -74,9 +74,285 @@
 <% } %>
 
 <% if (resultsHtml) { %>
-  <section class="results-content">
-    <%- resultsHtml %>
+  <nav class="run-tabs">
+    <button class="run-tab active" data-tab="report">Report</button>
+    <button class="run-tab" data-tab="simulator">Mix Simulator</button>
+  </nav>
+
+  <section class="run-tab-content active" id="tab-report">
+    <div class="results-content">
+      <%- resultsHtml %>
+    </div>
   </section>
+
+  <section class="run-tab-content" id="tab-simulator">
+    <div id="simulator-app">
+      <hgroup>
+        <h2>Mix Simulator</h2>
+        <p>Explore how subsidizing high-volume tiers with low-volume tiers affects your margins.</p>
+      </hgroup>
+
+      <div id="sim-no-data" style="display:none;">
+        <p>No invoice data available for this run. The simulator requires shipment history.</p>
+      </div>
+
+      <div id="sim-controls" style="display:none;">
+        <!-- Controls: one row per bracket -->
+        <table class="sim-controls-table" id="sim-controls-table">
+          <thead>
+            <tr>
+              <th>Bracket</th>
+              <th>Volume</th>
+              <th>Discount</th>
+              <th></th>
+              <th>Sponsor</th>
+            </tr>
+          </thead>
+          <tbody id="sim-controls-body"></tbody>
+        </table>
+
+        <div class="sim-options">
+          <span class="sim-options-label">Target:</span>
+          <label><input type="radio" name="sim-target" value="margin" checked><span>Keep total margin</span></label>
+          <label><input type="radio" name="sim-target" value="breakeven"><span>Break-even</span></label>
+        </div>
+
+        <!-- Results -->
+        <div id="sim-kpis" class="report-kpis"></div>
+        <div id="sim-table-wrap"></div>
+        <div id="sim-warnings"></div>
+      </div>
+    </div>
+
+    <script>
+    (function() {
+      // Simulator data is embedded by the report generator
+      const dataEl = document.getElementById('sim-data');
+      if (!dataEl) {
+        document.getElementById('sim-no-data').style.display = '';
+        return;
+      }
+
+      const D = JSON.parse(dataEl.textContent);
+      if (!D.brackets || D.brackets.length === 0 || D.domesticCounts.every(c => c === 0)) {
+        document.getElementById('sim-no-data').style.display = '';
+        return;
+      }
+
+      document.getElementById('sim-controls').style.display = '';
+
+      const brackets = D.brackets;        // [{name, baselinePrice, revenueExVat, avgCost, volume}]
+      const vatMultiplier = D.vatMultiplier;
+
+      // ── nicePrice (same as server) ──────────────────────────────────────
+      function nicePrice(v) { return Math.ceil((v - 9) / 10) * 10 + 9; }
+
+      // ── Build discount sliders ──────────────────────────────────────────
+      const discounts = brackets.map(() => 0); // 0-100%
+      const sponsors  = brackets.map((b, i) => b.volume === 0); // default: sponsor tiers with no volume
+
+      const tbody = document.getElementById('sim-controls-body');
+
+      brackets.forEach((b, i) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td>' + b.name + '</td>' +
+          '<td class="sim-vol">' + b.volume + '</td>' +
+          '<td><input type="range" min="0" max="100" step="5" value="0" data-idx="' + i + '"></td>' +
+          '<td class="sim-pct"><output>0%</output></td>' +
+          '<td class="sim-sponsor-cell"><input type="checkbox" data-idx="' + i + '"' + (sponsors[i] ? ' checked' : '') + '></td>';
+
+        const slider = tr.querySelector('input[type="range"]');
+        const output = tr.querySelector('output');
+        const cb = tr.querySelector('input[type="checkbox"]');
+
+        slider.addEventListener('input', function() {
+          discounts[i] = Number(this.value);
+          output.textContent = this.value + '%';
+          if (discounts[i] > 0) {
+            sponsors[i] = false;
+            cb.checked = false;
+            cb.disabled = true;
+          } else {
+            cb.disabled = false;
+          }
+          simulate();
+        });
+
+        cb.addEventListener('change', function() {
+          sponsors[i] = this.checked;
+          simulate();
+        });
+
+        tbody.appendChild(tr);
+      });
+
+      // Target mode
+      let targetMode = 'margin';
+      document.querySelectorAll('input[name="sim-target"]').forEach(r => {
+        r.addEventListener('change', function() { targetMode = this.value; simulate(); });
+      });
+
+      // ── Simulate ────────────────────────────────────────────────────────
+      function simulate() {
+        // 1. Compute baseline total margin
+        let baselineMargin = 0;
+        for (const b of brackets) {
+          if (b.volume > 0 && b.revenueExVat != null && b.avgCost != null) {
+            baselineMargin += (b.revenueExVat - b.avgCost) * b.volume;
+          }
+        }
+
+        // 2. Apply discounts: new customer price = baseline * (1 - discount%)
+        const simPrices = brackets.map((b, i) => {
+          if (discounts[i] === 0 || b.baselinePrice == null) return b.baselinePrice;
+          const discounted = b.baselinePrice * (1 - discounts[i] / 100);
+          return discounted <= 0 ? 0 : nicePrice(Math.ceil(discounted));
+        });
+
+        const simRevExVat = simPrices.map(p => p != null ? p / vatMultiplier : null);
+
+        // 3. Compute revenue lost from discounted tiers
+        let revenueShortfall = 0;
+        for (let i = 0; i < brackets.length; i++) {
+          if (discounts[i] > 0 && brackets[i].volume > 0 && brackets[i].revenueExVat != null) {
+            const lost = (brackets[i].revenueExVat - (simRevExVat[i] || 0)) * brackets[i].volume;
+            revenueShortfall += lost;
+          }
+        }
+
+        // If target is margin, need to recover shortfall.
+        // If target is breakeven, need to recover shortfall + baselineMargin (drive margin to 0).
+        let recoveryNeeded = revenueShortfall;
+        if (targetMode === 'breakeven') {
+          recoveryNeeded = revenueShortfall - baselineMargin; // reduce margin to 0
+          if (recoveryNeeded < 0) recoveryNeeded = 0;
+        }
+
+        // 4. Distribute recovery across sponsor tiers proportional to volume
+        const sponsorVolume = brackets.reduce((sum, b, i) => sum + (sponsors[i] ? b.volume : 0), 0);
+        const finalPrices = [...simPrices];
+
+        if (sponsorVolume > 0 && recoveryNeeded > 0) {
+          for (let i = 0; i < brackets.length; i++) {
+            if (!sponsors[i] || brackets[i].volume === 0) continue;
+            const share = brackets[i].volume / sponsorVolume;
+            const extraRevPerParcel = (recoveryNeeded * share) / brackets[i].volume;
+            const newRevExVat = (simRevExVat[i] || 0) + extraRevPerParcel;
+            const newCustomerPrice = nicePrice(Math.ceil(newRevExVat * vatMultiplier));
+            finalPrices[i] = newCustomerPrice;
+          }
+        }
+
+        const finalRevExVat = finalPrices.map(p => p != null ? p / vatMultiplier : null);
+
+        // 5. Compute simulated margins
+        let simTotalMargin = 0;
+        let simLossMaking = 0;
+        const bracketResults = brackets.map((b, i) => {
+          const rev = finalRevExVat[i];
+          let margin = null;
+          let totalMargin = null;
+          if (b.volume > 0 && rev != null && b.avgCost != null) {
+            margin = rev - b.avgCost;
+            totalMargin = margin * b.volume;
+            simTotalMargin += totalMargin;
+            // Estimate loss-making: if avg margin < 0, approximate count
+            if (margin < 0) simLossMaking += b.volume;
+          }
+          return {
+            name: b.name,
+            volume: b.volume,
+            baselinePrice: b.baselinePrice,
+            simPrice: finalPrices[i],
+            priceDelta: (finalPrices[i] != null && b.baselinePrice != null) ? finalPrices[i] - b.baselinePrice : null,
+            avgCost: b.avgCost,
+            revExVat: rev,
+            margin: margin,
+            totalMargin: totalMargin,
+          };
+        });
+
+        render(bracketResults, baselineMargin, simTotalMargin, simLossMaking);
+      }
+
+      // ── Render results ──────────────────────────────────────────────────
+      function render(results, baselineMargin, simMargin, simLossMaking) {
+        const marginDelta = simMargin - baselineMargin;
+
+        // KPIs
+        const kpiBox = document.getElementById('sim-kpis');
+        const deltaCls = marginDelta >= 0 ? 'kpi-positive' : 'kpi-negative';
+        const deltaSign = marginDelta >= 0 ? '+' : '';
+        kpiBox.innerHTML =
+          '<div class="kpi"><span class="kpi-value">' + simMargin.toFixed(0) + ' kr</span><span class="kpi-label">Simulated total margin</span></div>' +
+          '<div class="kpi ' + deltaCls + '"><span class="kpi-value">' + deltaSign + marginDelta.toFixed(0) + ' kr</span><span class="kpi-label">vs. baseline</span></div>' +
+          '<div class="kpi"><span class="kpi-value">' + baselineMargin.toFixed(0) + ' kr</span><span class="kpi-label">Baseline total margin</span></div>';
+
+        // Table
+        const wrap = document.getElementById('sim-table-wrap');
+        let t = '<table><thead><tr>';
+        t += '<th>Bracket</th><th>Vol.</th><th>Baseline</th><th>Simulated</th><th>Change</th><th>Avg cost</th><th>Rev. ex VAT</th><th>Margin</th>';
+        t += '</tr></thead><tbody>';
+
+        for (const r of results) {
+          const marginCls = r.margin != null ? (r.margin >= 0 ? 'margin-positive' : 'margin-negative') : '';
+          const deltaCls = r.priceDelta != null ? (r.priceDelta > 0 ? 'margin-negative' : r.priceDelta < 0 ? 'margin-positive' : '') : '';
+          const deltaStr = r.priceDelta != null ? (r.priceDelta > 0 ? '+' + r.priceDelta : r.priceDelta === 0 ? '0' : '' + r.priceDelta) + ' kr' : '—';
+          t += '<tr>';
+          t += '<td>' + r.name + '</td>';
+          t += '<td>' + r.volume + '</td>';
+          t += '<td>' + (r.baselinePrice != null ? r.baselinePrice + ' kr' : 'N/A') + '</td>';
+          t += '<td><strong>' + (r.simPrice != null ? r.simPrice + ' kr' : 'N/A') + '</strong></td>';
+          t += '<td class="' + deltaCls + '">' + deltaStr + '</td>';
+          t += '<td>' + (r.avgCost != null ? r.avgCost.toFixed(0) + ' kr' : '—') + '</td>';
+          t += '<td>' + (r.revExVat != null ? r.revExVat.toFixed(0) + ' kr' : '—') + '</td>';
+          t += '<td class="' + marginCls + '">' + (r.margin != null ? (r.margin >= 0 ? '+' : '') + r.margin.toFixed(0) + ' kr' : '—') + '</td>';
+          t += '</tr>';
+        }
+        t += '</tbody></table>';
+        wrap.innerHTML = t;
+
+        // Warnings
+        const warnBox = document.getElementById('sim-warnings');
+        const warnings = [];
+        for (const r of results) {
+          if (r.priceDelta != null && r.priceDelta > 0 && r.volume === 0) {
+            warnings.push(r.name + ': price increased but no historical shipments to validate.');
+          }
+          if (r.simPrice != null && r.baselinePrice != null && r.simPrice > r.baselinePrice * 2) {
+            warnings.push(r.name + ': simulated price is more than 2\u00d7 baseline (' + r.simPrice + ' vs ' + r.baselinePrice + ' kr).');
+          }
+        }
+        const noSponsors = brackets.every((_, i) => !sponsors[i] || brackets[i].volume === 0);
+        const hasDiscount = discounts.some(d => d > 0);
+        if (hasDiscount && noSponsors) {
+          warnings.push('No sponsor tiers with volume selected. Cannot redistribute lost revenue.');
+        }
+        if (warnings.length > 0) {
+          warnBox.innerHTML = '<div class="sim-warnings">' + warnings.map(w => '<p>' + w + '</p>').join('') + '</div>';
+        } else {
+          warnBox.innerHTML = '';
+        }
+      }
+
+      // Initial render
+      simulate();
+    })();
+    </script>
+  </section>
+
+  <script>
+  // Tab switching
+  document.querySelectorAll('.run-tab').forEach(btn => {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('.run-tab').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.run-tab-content').forEach(c => c.classList.remove('active'));
+      this.classList.add('active');
+      document.getElementById('tab-' + this.dataset.tab).classList.add('active');
+    });
+  });
+  </script>
 <% } %>
 
 <div class="danger-zone">

@@ -823,6 +823,162 @@ details summary:hover {
   text-align: right;
 }
 
+/* -- Run tabs ------------------------------------------------------------- */
+
+.run-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--pico-muted-border-color);
+  margin-bottom: 1.5rem;
+}
+
+.run-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  padding: 0.5rem 1.25rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--pico-muted-color);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.run-tab:hover {
+  color: var(--pico-color);
+}
+
+.run-tab.active {
+  color: var(--pico-primary);
+  border-bottom-color: var(--pico-primary);
+}
+
+.run-tab-content {
+  display: none;
+}
+
+.run-tab-content.active {
+  display: block;
+}
+
+/* -- Mix Simulator -------------------------------------------------------- */
+
+/* Controls table */
+.sim-controls-table {
+  width: auto;
+  margin-bottom: 1rem;
+  white-space: nowrap;
+}
+
+.sim-controls-table th,
+.sim-controls-table td {
+  font-size: 0.85rem;
+  padding: 0.3rem 0.75rem;
+  vertical-align: middle;
+}
+
+.sim-controls-table input[type="range"] {
+  width: 120px;
+  margin: 0 !important;
+  padding: 0 !important;
+  height: auto !important;
+  vertical-align: middle;
+}
+
+.sim-controls-table input[type="checkbox"] {
+  width: 1em !important;
+  height: 1em !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  appearance: auto;
+  -webkit-appearance: auto;
+}
+
+.sim-controls-table output {
+  font-weight: 600;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.sim-vol {
+  text-align: right;
+  color: var(--pico-muted-color);
+}
+
+.sim-pct {
+  text-align: right;
+  width: 3rem;
+}
+
+.sim-sponsor-cell {
+  text-align: center;
+}
+
+/* Options row (target mode) */
+.sim-options {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.85rem;
+}
+
+.sim-options-label {
+  font-weight: 600;
+}
+
+.sim-options label {
+  display: flex !important;
+  align-items: center;
+  gap: 0.3rem;
+  margin-bottom: 0 !important;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.sim-options input[type="radio"] {
+  width: 1em !important;
+  height: 1em !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  appearance: auto;
+  -webkit-appearance: auto;
+}
+
+/* Results table */
+#sim-table-wrap table {
+  width: 100%;
+  white-space: nowrap;
+  margin-bottom: 1rem;
+}
+
+#sim-table-wrap table th,
+#sim-table-wrap table td {
+  font-size: 0.8rem;
+  padding: 0.35rem 0.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Warnings */
+.sim-warnings {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: var(--pico-border-radius);
+  padding: 0.75rem 1rem;
+  margin-top: 0.5rem;
+}
+
+.sim-warnings p {
+  margin: 0 0 0.25rem;
+  font-size: 0.8rem;
+  color: #856404;
+}
+
+.sim-warnings p:last-child {
+  margin-bottom: 0;
+}
+
 /* -- Spacing utilities ----------------------------------------------------- */
 
 .mt-0 { margin-top: 0; }

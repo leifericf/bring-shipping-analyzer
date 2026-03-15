@@ -400,6 +400,25 @@ function generateReport(rates, invoiceAnalysis, lineItems) {
   // 7) Timestamp
   html += `<p class="report-timestamp">Generated ${new Date().toISOString().replace('T', ' ').replace(/\.\d+Z/, ' UTC')}</p>`;
 
+  // 8) Simulator data (embedded JSON for client-side mix simulator)
+  if (volume && profitability) {
+    const simData = {
+      vatMultiplier,
+      brackets: shopifyBrackets.map((b, i) => {
+        const profBracket = profitability.brackets[i];
+        return {
+          name: b.name,
+          baselinePrice: norwayRates[i].price,
+          revenueExVat: profBracket?.revenueExVat ?? null,
+          avgCost: profBracket?.avgCost ?? null,
+          volume: volume.domesticCounts[i],
+        };
+      }),
+      domesticCounts: volume.domesticCounts,
+    };
+    html += `<script type="application/json" id="sim-data">${JSON.stringify(simData)}<\/script>`;
+  }
+
   // ── CLI summary ──────────────────────────────────────────────────────────
 
   const usedServices = [...new Set(norwayRates.map(r => r.serviceId))];
