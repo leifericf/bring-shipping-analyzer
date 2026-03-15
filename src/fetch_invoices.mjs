@@ -148,34 +148,11 @@ async function main() {
     await sleep(1000);
   }
 
-  console.log('\n=== SUMMARY ===\n');
-
-  const byProduct = {};
-  for (const line of allLineItems) {
-    const key = `${line.productCode} - ${line.product}`;
-    if (!byProduct[key]) byProduct[key] = { count: 0, totalGross: 0, totalAgreement: 0, totalDiscount: 0, weights: [] };
-    byProduct[key].count++;
-    byProduct[key].totalGross += line.grossPrice;
-    byProduct[key].totalAgreement += line.agreementPrice;
-    byProduct[key].totalDiscount += line.discount;
-    if (line.weightKg) byProduct[key].weights.push(line.weightKg);
-  }
-
-  for (const [product, stats] of Object.entries(byProduct).sort((a, b) => b[1].count - a[1].count)) {
-    const avgPrice = stats.count > 0 ? (stats.totalAgreement / stats.count).toFixed(2) : 0;
-    const avgWeight = stats.weights.length > 0 ? (stats.weights.reduce((a, b) => a + b, 0) / stats.weights.length).toFixed(2) : 'N/A';
-    console.log(`${product}`);
-    console.log(`  Shipments: ${stats.count}`);
-    console.log(`  Total paid: ${stats.totalAgreement.toFixed(2)} NOK`);
-    console.log(`  Avg per shipment: ${avgPrice} NOK`);
-    console.log(`  Avg weight: ${avgWeight} kg\n`);
-  }
-
   // Write line items to database
   insertInvoiceLineItems(RUN_ID, allLineItems);
   closeDb();
 
-  console.log(`Saved ${invoices.length} invoices and ${allLineItems.length} line items to database.`);
+  console.log(`\nDone! Saved ${invoices.length} invoices and ${allLineItems.length} line items to database.`);
 }
 
 main().catch(err => { console.error(err); process.exit(1); });
