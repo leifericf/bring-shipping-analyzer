@@ -24,6 +24,17 @@ header.container nav a:hover {
   opacity: 0.75;
 }
 
+header.container nav a.nav-active {
+  font-weight: 700;
+  opacity: 1;
+  border-bottom: 2px solid var(--pico-primary);
+}
+
+header.container nav a.nav-cta {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.85rem;
+}
+
 /* -- Breadcrumbs ----------------------------------------------------------- */
 
 .breadcrumb {

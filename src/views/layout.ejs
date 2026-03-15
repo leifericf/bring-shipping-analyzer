@@ -16,8 +16,8 @@
         <li><a href="/"><strong>Bring Shipping Advisor</strong></a></li>
       </ul>
       <ul>
-        <li><a href="/">Dashboard</a></li>
-        <li><a href="/accounts/new" role="button" class="outline" style="padding:0.25rem 0.75rem;font-size:0.85rem;">+ New Account</a></li>
+        <li><a href="/"<%= currentPath === '/' ? ' class="nav-active"' : '' %>>Dashboard</a></li>
+        <li><a href="/accounts/new" role="button" class="outline nav-cta"<%= currentPath === '/accounts/new' ? ' aria-current="page"' : '' %>>+ New Account</a></li>
       </ul>
     </nav>
   </header>

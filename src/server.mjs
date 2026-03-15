@@ -38,7 +38,7 @@ function fmtDate(sqliteDateStr, opts = {}) {
  * Render a view inside the layout.
  */
 function render(res, view, locals = {}) {
-  const allLocals = { ...locals, fmtDate };
+  const allLocals = { ...locals, fmtDate, currentPath: res.req.path };
   res.render(view, allLocals, (err, body) => {
     if (err) { console.error(err); return res.status(500).send('Render error'); }
     res.render('layout', { ...allLocals, body });
