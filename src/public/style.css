@@ -663,6 +663,27 @@ details summary:hover {
   font-size: 1.05em;
 }
 
+/* Volume table (reuses rate-card but lighter styling) */
+.volume-table tbody td:not(:first-child) {
+  font-weight: normal;
+  font-size: 0.9em;
+}
+
+.volume-table tbody td:last-child {
+  font-weight: 600;
+}
+
+.vol-zero {
+  color: var(--pico-muted-color);
+  font-weight: normal;
+}
+
+.report-hero h4 {
+  font-size: 0.85rem;
+  color: var(--pico-muted-color);
+  margin: 1.5rem 0 0.3rem;
+}
+
 
 
 /* -- Report: KPI tiles ---------------------------------------------------- */

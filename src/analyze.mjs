@@ -85,6 +85,7 @@ function buildShipmentProfiles(lineItems) {
         productCode: item.product_code,
         toPostalCode: item.to_postal_code,
         toCity: item.to_city,
+        deliveryCountry: item.delivery_country || '',
         weight: null,
         totalCost: 0,
       });
@@ -100,6 +101,42 @@ function buildShipmentProfiles(lineItems) {
   }
 
   return shipments;
+}
+
+/**
+ * Count shipments per destination zone × domestic weight bracket.
+ * Groups by the same international zones used in the rate card.
+ * Counts all services (not just recommended) for an accurate demand signal.
+ */
+function computeShipmentVolume(lineItems, intlZones) {
+  const originCountry = config.originCountry;
+  const shopifyBrackets = analysis.domesticShopifyBrackets;
+  const shipments = buildShipmentProfiles(lineItems);
+
+  // Initialize counts: domestic + each intl zone, per bracket
+  const domesticCounts = shopifyBrackets.map(() => 0);
+  const intlZoneCounts = intlZones.map(() => shopifyBrackets.map(() => 0));
+  let domesticTotal = 0;
+  const intlZoneTotals = intlZones.map(() => 0);
+
+  for (const [, s] of shipments) {
+    if (s.weight === null) continue;
+    const bracketIdx = shopifyBrackets.findIndex(b => s.weight <= (b.maxWeight ?? Infinity));
+    if (bracketIdx === -1) continue;
+
+    if (s.deliveryCountry === originCountry) {
+      domesticCounts[bracketIdx]++;
+      domesticTotal++;
+    } else {
+      const zoneIdx = intlZones.findIndex(z => z.codes.includes(s.deliveryCountry));
+      if (zoneIdx !== -1) {
+        intlZoneCounts[zoneIdx][bracketIdx]++;
+        intlZoneTotals[zoneIdx]++;
+      }
+    }
+  }
+
+  return { domesticCounts, domesticTotal, intlZoneCounts, intlZoneTotals };
 }
 
 // ── Profitability computation ────────────────────────────────────────────────
@@ -320,6 +357,12 @@ function generateReport(rates, invoiceAnalysis, lineItems) {
     profitability = computeProfitability(lineItems, rates, roadToll);
   }
 
+  // ── Compute shipment volume ──────────────────────────────────────────────
+
+  const volume = lineItems.length > 0
+    ? computeShipmentVolume(lineItems, intlZones)
+    : null;
+
   // ── Render HTML ──────────────────────────────────────────────────────────
 
   let html = '';
@@ -329,7 +372,7 @@ function generateReport(rates, invoiceAnalysis, lineItems) {
     norwayRates, intlZones, countryNames, rates,
     shopifyBrackets, intlShopifyBrackets,
     vatPct, roadToll, safeZone, primaryService, cheapestIntl,
-    serviceNames,
+    serviceNames, volume,
   );
 
   // 2) KPI tiles
@@ -402,7 +445,7 @@ function renderHeroSection(
   norwayRates, intlZones, countryNames, allRates,
   shopifyBrackets, intlShopifyBrackets,
   vatPct, roadToll, safeZone, primaryService, cheapestIntl,
-  serviceNames,
+  serviceNames, volume,
 ) {
   const usedServices = [...new Set(shopifyBrackets.map(b => b.serviceId || primaryService))];
 
@@ -449,6 +492,44 @@ function renderHeroSection(
   }
 
   h += `</tbody></table>`;
+
+  // ── Volume table (shipment counts from invoices) ─────────────────────────
+  if (volume) {
+    const grandTotal = volume.domesticTotal + volume.intlZoneTotals.reduce((a, b) => a + b, 0);
+    if (grandTotal > 0) {
+      h += `<h4>Shipment volume (from invoices)</h4>`;
+      h += `<table class="rate-card volume-table">`;
+      h += `<thead><tr><th>Destination</th>`;
+      for (const b of shopifyBrackets) h += `<th>${esc(b.name)}</th>`;
+      h += `<th>Total</th>`;
+      h += `</tr></thead>`;
+
+      h += `<tbody>`;
+
+      // Norway row
+      h += `<tr><td>Norway</td>`;
+      for (const count of volume.domesticCounts) {
+        h += `<td>${count || '<span class="vol-zero">0</span>'}</td>`;
+      }
+      h += `<td>${volume.domesticTotal}</td>`;
+      h += `</tr>`;
+
+      // International zone rows
+      for (let z = 0; z < intlZones.length; z++) {
+        const zone = intlZones[z];
+        const zoneLabel = zone.codes.map(c => countryNames[c]).filter(Boolean).join(', ');
+        h += `<tr><td>${esc(zoneLabel)}</td>`;
+        for (const count of volume.intlZoneCounts[z]) {
+          h += `<td>${count || '<span class="vol-zero">0</span>'}</td>`;
+        }
+        h += `<td>${volume.intlZoneTotals[z]}</td>`;
+        h += `</tr>`;
+      }
+
+      h += `</tbody></table>`;
+      h += `<p class="report-note">Parcel counts from invoice data, all services combined.</p>`;
+    }
+  }
 
   // ── Note ──────────────────────────────────────────────────────────────────
   h += `<p class="report-note">`;
