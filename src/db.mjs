@@ -174,7 +174,19 @@ export function updateAccountConfig(id, config) {
 
 export function deleteAccount(id) {
   const db = getDb();
-  db.prepare('DELETE FROM accounts WHERE id = ?').run(id);
+  db.transaction(() => {
+    // Delete all child data for every run belonging to this account
+    const runs = db.prepare('SELECT id FROM runs WHERE account_id = ?').all(id);
+    for (const run of runs) {
+      db.prepare('DELETE FROM analysis_results WHERE run_id = ?').run(run.id);
+      db.prepare('DELETE FROM invoice_line_items WHERE run_id = ?').run(run.id);
+      db.prepare('DELETE FROM invoices WHERE run_id = ?').run(run.id);
+      db.prepare('DELETE FROM zones WHERE run_id = ?').run(run.id);
+      db.prepare('DELETE FROM shipping_rates WHERE run_id = ?').run(run.id);
+    }
+    db.prepare('DELETE FROM runs WHERE account_id = ?').run(id);
+    db.prepare('DELETE FROM accounts WHERE id = ?').run(id);
+  })();
 }
 
 // ---------------------------------------------------------------------------
