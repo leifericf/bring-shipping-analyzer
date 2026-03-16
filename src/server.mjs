@@ -235,18 +235,20 @@ app.get('/runs/:id', (req, res) => {
     // changes (e.g. VAT toggle) take effect without re-running.
     try {
       const account = run.account_id ? getAccount(run.account_id) : null;
-      const config = account
+      const configResult = account
         ? validateConfig(JSON.parse(account.config))
         : validateConfig(JSON.parse(run.config_snapshot));
 
-      if (config.ok) {
+      if (configResult.ok) {
         const rates = getShippingRates(run.id).map(normalizeDbRate);
         const lineItems = getInvoiceLineItems(run.id).map(normalizeDbLineItem);
-        const model = buildAnalysisModel({ rates, lineItems, config: config.value, generatedAt: new Date().toISOString() });
+        const model = buildAnalysisModel({ rates, lineItems, config: configResult.value, generatedAt: new Date().toISOString() });
         resultsHtml = renderHtmlReport(model);
+      } else {
+        console.warn('Report regeneration: config validation failed:', configResult.errors);
       }
-    } catch {
-      // Fall back to cached report if regeneration fails
+    } catch (err) {
+      console.error('Report regeneration failed, using cached:', err.message, err.stack);
     }
 
     if (!resultsHtml) {
