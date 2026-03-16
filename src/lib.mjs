@@ -5,11 +5,57 @@ import { dirname, join } from 'path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ROOT_DIR = join(__dirname, '..');
 export const DATA_DIR = join(ROOT_DIR, 'data');
+export const DEFAULT_ORIGIN_POSTAL_CODE = '0174';
+
+/**
+ * Read and validate a required RUN_ID from env. Exits on failure.
+ * @returns {number}
+ */
+export function requireRunId() {
+  const id = Number(process.env.RUN_ID);
+  if (!id) {
+    console.error('Error: RUN_ID environment variable is required. Use "npm start" or the web UI.');
+    process.exit(1);
+  }
+  return id;
+}
+
+/**
+ * Read and validate Bring API credentials from env. Exits on failure.
+ * @returns {{ apiUid: string, apiKey: string, customerNumber: string, authHeaders: object }}
+ */
+export function requireBringCredentials() {
+  const apiUid = process.env.BRING_API_UID;
+  const apiKey = process.env.BRING_API_KEY;
+  const customerNumber = process.env.BRING_CUSTOMER_NUMBER;
+
+  for (const [name, value] of [['BRING_API_UID', apiUid], ['BRING_API_KEY', apiKey], ['BRING_CUSTOMER_NUMBER', customerNumber]]) {
+    if (!value) {
+      console.error(`Error: ${name} environment variable is required.`);
+      process.exit(1);
+    }
+  }
+
+  return {
+    apiUid,
+    apiKey,
+    customerNumber,
+    authHeaders: getAuthHeaders({ BRING_API_UID: apiUid, BRING_API_KEY: apiKey }),
+  };
+}
+
+/**
+ * Wrap an async main function with top-level error handling.
+ * @param {Function} fn - async function to run
+ */
+export function runMain(fn) {
+  fn().catch(err => { console.error(err); process.exit(1); });
+}
 
 /**
  * Returns the common authentication headers for Bring APIs.
  */
-export function getAuthHeaders(env) {
+function getAuthHeaders(env) {
   return {
     'X-Mybring-API-Uid': env.BRING_API_UID,
     'X-Mybring-API-Key': env.BRING_API_KEY,
@@ -26,8 +72,13 @@ export function sleep(ms) {
 /**
  * Fetch with retry and exponential backoff.
  * Retries on 5xx errors and network failures, not 4xx.
+ *
+ * @param {string} url
+ * @param {object} [options]
+ * @param {number} [retries=3]
+ * @param {Function} [log=console.log] - Logging function for retry messages
  */
-export async function fetchWithRetry(url, options = {}, retries = 3) {
+export async function fetchWithRetry(url, options = {}, retries = 3, log = console.log) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const response = await fetch(url, options);
@@ -40,7 +91,7 @@ export async function fetchWithRetry(url, options = {}, retries = 3) {
       // Retry server errors (5xx)
       if (!response.ok && attempt < retries) {
         const delay = 1000 * Math.pow(2, attempt);
-        console.log(`  Server error ${response.status}, retrying in ${delay}ms...`);
+        log(`  Server error ${response.status}, retrying in ${delay}ms...`);
         await sleep(delay);
         continue;
       }
@@ -49,7 +100,7 @@ export async function fetchWithRetry(url, options = {}, retries = 3) {
     } catch (error) {
       if (attempt < retries) {
         const delay = 1000 * Math.pow(2, attempt);
-        console.log(`  Network error, retrying in ${delay}ms...`);
+        log(`  Network error, retrying in ${delay}ms...`);
         await sleep(delay);
         continue;
       }

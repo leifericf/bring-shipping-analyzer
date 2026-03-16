@@ -1,31 +1,19 @@
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { requireRunId, requireBringCredentials } from './lib.mjs';
 import { loadConfig } from './config.mjs';
 import { updateRunStatus, closeDb } from './db.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const RUN_ID = Number(process.env.RUN_ID);
-if (!RUN_ID) {
-  console.error('Error: RUN_ID environment variable is required.');
-  process.exit(1);
-}
-
-// Validate that the server passed credentials
-for (const key of ['BRING_API_UID', 'BRING_API_KEY', 'BRING_CUSTOMER_NUMBER']) {
-  if (!process.env[key]) {
-    console.error(`Error: ${key} environment variable is required.`);
-    process.exit(1);
-  }
-}
-
-// Validate config is available
+const RUN_ID = requireRunId();
+requireBringCredentials();
 loadConfig();
 
 const scripts = [
-  { name: 'fetch_rates.mjs', desc: 'Fetching shipping rates', status: 'fetching_rates' },
-  { name: 'fetch_invoices.mjs', desc: 'Fetching invoices', status: 'fetching_invoices' },
+  { name: 'fetch-rates.mjs', desc: 'Fetching shipping rates', status: 'fetching_rates' },
+  { name: 'fetch-invoices.mjs', desc: 'Fetching invoices', status: 'fetching_invoices' },
   { name: 'analyze.mjs', desc: 'Analyzing data', status: 'analyzing' },
 ];
 

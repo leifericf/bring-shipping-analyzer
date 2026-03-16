@@ -177,18 +177,25 @@ export function updateAccountConfig(id, config) {
   db.prepare('UPDATE accounts SET config = ? WHERE id = ?').run(JSON.stringify(config), id);
 }
 
+// Tables with a run_id foreign key, in deletion order.
+const RUN_CHILD_TABLES = ['analysis_results', 'invoice_line_items', 'invoices', 'zones', 'shipping_rates'];
+
+/**
+ * Delete all child data for the given run IDs.
+ * Used by both deleteAccount and deleteRun.
+ */
+function deleteRunChildren(db, runIds) {
+  const placeholders = runIds.map(() => '?').join(',');
+  for (const table of RUN_CHILD_TABLES) {
+    db.prepare(`DELETE FROM ${table} WHERE run_id IN (${placeholders})`).run(...runIds);
+  }
+}
+
 export function deleteAccount(id) {
   const db = getDb();
   db.transaction(() => {
-    // Delete all child data for every run belonging to this account
-    const runs = db.prepare('SELECT id FROM runs WHERE account_id = ?').all(id);
-    for (const run of runs) {
-      db.prepare('DELETE FROM analysis_results WHERE run_id = ?').run(run.id);
-      db.prepare('DELETE FROM invoice_line_items WHERE run_id = ?').run(run.id);
-      db.prepare('DELETE FROM invoices WHERE run_id = ?').run(run.id);
-      db.prepare('DELETE FROM zones WHERE run_id = ?').run(run.id);
-      db.prepare('DELETE FROM shipping_rates WHERE run_id = ?').run(run.id);
-    }
+    const runIds = db.prepare('SELECT id FROM runs WHERE account_id = ?').all(id).map(r => r.id);
+    if (runIds.length > 0) deleteRunChildren(db, runIds);
     db.prepare('DELETE FROM runs WHERE account_id = ?').run(id);
     db.prepare('DELETE FROM accounts WHERE id = ?').run(id);
   })();
@@ -211,11 +218,7 @@ export function createRun(customerNumber, originPostalCode, configSnapshot, acco
 export function deleteRun(id) {
   const db = getDb();
   db.transaction(() => {
-    db.prepare('DELETE FROM analysis_results WHERE run_id = ?').run(id);
-    db.prepare('DELETE FROM invoice_line_items WHERE run_id = ?').run(id);
-    db.prepare('DELETE FROM invoices WHERE run_id = ?').run(id);
-    db.prepare('DELETE FROM zones WHERE run_id = ?').run(id);
-    db.prepare('DELETE FROM shipping_rates WHERE run_id = ?').run(id);
+    deleteRunChildren(db, [id]);
     db.prepare('DELETE FROM runs WHERE id = ?').run(id);
   })();
 }
@@ -258,7 +261,7 @@ export function insertShippingRates(runId, rates) {
   `);
   const insertMany = db.transaction((rows) => {
     for (const r of rows) {
-      stmt.run(runId, r.country, r.country_code, r.postal_code, r.zone != null ? String(r.zone) : null, r.service_id, r.service_name, r.weight_g, r.price_nok);
+      stmt.run(runId, r.country, r.countryCode, r.postalCode, r.zone != null ? String(r.zone) : null, r.serviceId, r.serviceName, r.weightG, r.priceNok);
     }
   });
   insertMany(rates);
@@ -272,7 +275,7 @@ export function insertZones(runId, zones) {
   `);
   const insertMany = db.transaction((rows) => {
     for (const z of rows) {
-      stmt.run(runId, z.country_code, z.postal_code, z.service_id, z.zone != null ? String(z.zone) : null);
+      stmt.run(runId, z.countryCode, z.postalCode, z.serviceId, z.zone != null ? String(z.zone) : null);
     }
   });
   insertMany(zones);
@@ -313,7 +316,7 @@ export function insertInvoiceLineItems(runId, lineItems) {
         runId, l.invoiceNumber, l.invoiceDate, l.shipmentNumber, l.packageNumber,
         l.productCode, l.product, l.description, l.weightKg,
         l.grossPrice, l.discount, l.agreementPrice, l.currency,
-        l.fromPostalCode, l.toPostalCode, l.toCity, l.toCountry,
+        l.fromPostalCode, l.toPostalCode, l.toCity, l.deliveryCountry,
       );
     }
   });
@@ -336,19 +339,33 @@ export function getAnalysisResult(runId) {
 
 /**
  * Get shipping rates for a run.
+ * Returns camelCase records for use in the domain model.
  */
 export function getShippingRates(runId) {
   const db = getDb();
-  return db.prepare('SELECT country, country_code, postal_code, zone, service_id, service_name, weight_g, price_nok FROM shipping_rates WHERE run_id = ?').all(runId);
+  return db.prepare(`
+    SELECT country, country_code AS countryCode, postal_code AS postalCode,
+           zone, service_id AS serviceId, service_name AS serviceName,
+           weight_g AS weightG, price_nok AS priceNok
+    FROM shipping_rates WHERE run_id = ?
+  `).all(runId);
 }
 
 /**
  * Get invoice line items for a run.
+ * Returns camelCase records for use in the domain model.
  */
 export function getInvoiceLineItems(runId) {
   const db = getDb();
   return db.prepare(`
-    SELECT invoice_number, invoice_date, shipment_number, package_number, product_code, product, description, weight_kg, gross_price, discount, agreement_price, currency_code, from_postal_code, to_postal_code, to_city, delivery_country
+    SELECT invoice_number AS invoiceNumber, invoice_date AS invoiceDate,
+           shipment_number AS shipmentNumber, package_number AS packageNumber,
+           product_code AS productCode, product, description,
+           weight_kg AS weightKg, gross_price AS grossPrice,
+           discount, agreement_price AS agreementPrice,
+           currency_code AS currencyCode, from_postal_code AS fromPostalCode,
+           to_postal_code AS toPostalCode, to_city AS toCity,
+           delivery_country AS deliveryCountry
     FROM invoice_line_items WHERE run_id = ?
   `).all(runId);
 }
