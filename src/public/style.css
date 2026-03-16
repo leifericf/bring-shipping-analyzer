@@ -73,6 +73,67 @@ header.container nav a.nav-cta {
   border: 1px solid #ffecb5;
 }
 
+.flash-warning {
+  background: #fff3cd;
+  color: #664d03;
+  border-color: #ffecb5;
+}
+
+/* -- Flagged country warnings ---------------------------------------------- */
+
+.flagged-warning {
+  margin-bottom: 1.5rem;
+  border: 2px solid #f0ad4e;
+  border-radius: var(--pico-border-radius);
+  background: #fffdf5;
+  padding: 0.5rem 1rem;
+}
+
+.flagged-warning summary {
+  font-weight: 600;
+  color: #8a6d3b;
+  cursor: pointer;
+}
+
+.flagged-table { margin-top: 0.5rem; font-size: 0.9rem; }
+.flagged-table th { padding: 0.35rem 0.75rem; }
+.flagged-table td { padding: 0.35rem 0.75rem; }
+
+.risk-badge {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.risk-critical { background: #dc3545; color: #fff; }
+.risk-high     { background: #e07020; color: #fff; }
+.risk-medium   { background: #f0ad4e; color: #3a3a3a; }
+.risk-low      { background: #5bc0de; color: #1a3a4a; }
+
+.flagged-row          { background: #fffdf5 !important; }
+.flagged-row.flagged-critical { background: #fde8ea !important; }
+.flagged-row.flagged-high     { background: #fef0e5 !important; }
+
+.flagged-reason {
+  font-size: 0.82rem;
+  color: #8a6d3b;
+  font-style: italic;
+}
+
+.flagged-item {
+  opacity: 0.85;
+  border-left: 3px solid #f0ad4e;
+  padding-left: 0.5rem;
+}
+
+.flagged-item .risk-badge { margin-left: 0.3rem; }
+
 /* -- Status badges --------------------------------------------------------- */
 
 .status {

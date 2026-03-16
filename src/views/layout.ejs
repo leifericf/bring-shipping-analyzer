@@ -24,7 +24,7 @@
 
   <main class="container">
     <% if (typeof flash !== 'undefined' && flash) { %>
-      <div class="flash"><%= flash %></div>
+      <div class="flash<%= typeof flashType !== 'undefined' && flashType === 'warning' ? ' flash-warning' : '' %>"><%= flash %></div>
     <% } %>
 
     <%- body %>

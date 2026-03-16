@@ -9,6 +9,26 @@
   <p><%= account.name %> &mdash; destinations, services, weight tiers, and analysis settings.</p>
 </hgroup>
 
+<% if (typeof flaggedInConfig !== 'undefined' && flaggedInConfig.length > 0) { %>
+<details class="flagged-warning" open>
+  <summary>
+    Warning: <%= flaggedInConfig.length %> flagged countr<%= flaggedInConfig.length === 1 ? 'y' : 'ies' %> in destinations
+  </summary>
+  <table class="flagged-table">
+    <thead><tr><th>Country</th><th>Risk</th><th>Reason</th></tr></thead>
+    <tbody>
+    <% flaggedInConfig.forEach(f => { %>
+      <tr class="flagged-<%= f.risk %>">
+        <td><strong><%= f.country %></strong> (<code><%= f.code %></code>)</td>
+        <td><span class="risk-badge risk-<%= f.risk %>"><%= riskLabels[f.risk] %></span></td>
+        <td><%= f.reason %></td>
+      </tr>
+    <% }) %>
+    </tbody>
+  </table>
+</details>
+<% } %>
+
 <form method="POST" action="/accounts/<%= account.id %>/config" id="config-form">
 
   <!-- ------------------------------------------------------------------ -->
@@ -161,6 +181,16 @@
 
 <script>
 // ---------------------------------------------------------------------------
+// Flagged countries (injected from server)
+// ---------------------------------------------------------------------------
+
+const FLAGGED = new Map(<%= JSON.stringify((typeof flaggedCountries !== 'undefined' ? flaggedCountries : []).map(f => [f.code, f])) %>);
+const RISK_LABELS = <%= JSON.stringify(typeof riskLabels !== 'undefined' ? riskLabels : {}) %>;
+const RISK_CLASSES = { critical: 'risk-critical', high: 'risk-high', medium: 'risk-medium', low: 'risk-low' };
+
+function getFlagged(code) { return FLAGGED.get(code) || null; }
+
+// ---------------------------------------------------------------------------
 // Country data from REST Countries API
 // ---------------------------------------------------------------------------
 
@@ -278,13 +308,18 @@ function renderDestinations() {
 
     const tbody = document.createElement('tbody');
     items.forEach(({ dest: d, index: i }) => {
+      const flag = getFlagged(d.code);
       const tr = document.createElement('tr');
+      if (flag) tr.className = 'flagged-row flagged-' + flag.risk;
+      const flagBadge = flag
+        ? ' <span class="risk-badge ' + RISK_CLASSES[flag.risk] + '" title="' + esc(flag.reason) + '">' + esc(RISK_LABELS[flag.risk]) + '</span>'
+        : '';
       tr.innerHTML =
-        '<td>' + esc(d.country) + '</td>' +
+        '<td>' + esc(d.country) + flagBadge + '</td>' +
         '<td><code>' + esc(d.code) + '</code></td>' +
         '<td>' + esc(d.postalCode) + '</td>' +
         '<td>' + (d.zone != null ? esc(String(d.zone)) : '<span class="muted">\u2014</span>') + '</td>' +
-        '<td>' + (d.desc ? esc(d.desc) : '') + '</td>' +
+        '<td>' + (flag ? '<span class="flagged-reason">' + esc(flag.reason) + '</span>' : (d.desc ? esc(d.desc) : '')) + '</td>' +
         '<td><button type="button" class="outline secondary dest-remove-btn" data-index="' + i + '">Remove</button></td>';
       tbody.appendChild(tr);
     });
@@ -464,13 +499,27 @@ document.getElementById('region-select').addEventListener('change', function () 
 
   regionCountries.forEach(c => {
     const already = existingCodes.has(c.code);
+    const flag = getFlagged(c.code);
+    const isFlagged = !!flag;
     const label = document.createElement('label');
-    label.className = 'region-country-item' + (already ? ' already-added' : '');
+    label.className = 'region-country-item' + (already ? ' already-added' : '') + (isFlagged ? ' flagged-item' : '');
+
+    // Flagged countries are unchecked by default; non-flagged are checked
+    const checked = already ? '' : (isFlagged ? '' : 'checked');
+    const disabled = already ? 'disabled' : '';
+
+    let flagHtml = '';
+    if (isFlagged) {
+      flagHtml = ' <span class="risk-badge ' + RISK_CLASSES[flag.risk] + '">' + esc(RISK_LABELS[flag.risk]) + '</span>' +
+        ' <small class="flagged-reason">' + esc(flag.reason) + '</small>';
+    }
+
     label.innerHTML =
-      '<input type="checkbox" ' + (already ? 'disabled' : 'checked') + ' value="' + esc(c.code) + '">' +
+      '<input type="checkbox" ' + checked + ' ' + disabled + ' value="' + esc(c.code) + '">' +
       ' ' + esc(c.name) + ' <code>' + esc(c.code) + '</code>' +
       (c.capital ? ' <small class="muted">' + esc(c.capital) + '</small>' : '') +
-      (already ? ' <small class="muted">(already added)</small>' : '');
+      (already ? ' <small class="muted">(already added)</small>' : '') +
+      flagHtml;
     listEl.appendChild(label);
   });
 
@@ -560,6 +609,15 @@ function addDest() {
     errorEl.textContent = 'Country code must be exactly 2 letters (ISO 3166-1 alpha-2).';
     errorEl.style.display = 'block';
     return;
+  }
+
+  // Warn if flagged
+  const flag = getFlagged(code);
+  if (flag) {
+    const riskLabel = RISK_LABELS[flag.risk] || flag.risk;
+    if (!confirm('Warning: ' + country + ' (' + code + ') is flagged as ' + riskLabel + ' risk.\n\n' + flag.reason + '\n\nAre you sure you want to add it?')) {
+      return;
+    }
   }
 
   const config = getConfig();

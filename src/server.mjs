@@ -7,6 +7,7 @@ import { tmpdir } from 'os';
 import { httpsGet, DEFAULT_ORIGIN_POSTAL_CODE } from './lib.mjs';
 import { fmtDate, fmtStatus } from './core/formatting.mjs';
 import { validateConfig } from './core/config/validate.mjs';
+import { checkForFlaggedCountries, FLAGGED_COUNTRIES, RISK_LABELS } from './core/flagged-countries.mjs';
 import { DEFAULT_CONFIG_PATH } from './config.mjs';
 import {
   getDb, closeDb,
@@ -113,7 +114,12 @@ app.get('/accounts/:id/config', (req, res) => {
 
   const config = JSON.parse(account.config);
   const configJson = JSON.stringify(config, null, 2);
-  render(res, 'account-config', { title: 'Config: ' + account.name, account, configJson });
+  const destCodes = (config.destinations || []).map(d => d.code);
+  const flaggedInConfig = checkForFlaggedCountries(destCodes);
+  render(res, 'account-config', {
+    title: 'Config: ' + account.name, account, configJson,
+    flaggedInConfig, flaggedCountries: FLAGGED_COUNTRIES, riskLabels: RISK_LABELS,
+  });
 });
 
 app.post('/accounts/:id/config', (req, res) => {
@@ -141,7 +147,23 @@ app.post('/accounts/:id/config', (req, res) => {
     });
   }
 
+  // Check for flagged countries — warn but still save
+  const destCodes = (config.destinations || []).map(d => d.code);
+  const flaggedInConfig = checkForFlaggedCountries(destCodes);
+
   updateAccountConfig(id, config);
+
+  if (flaggedInConfig.length > 0) {
+    const warnings = flaggedInConfig.map(f => `${f.country} (${f.code}): ${f.risk} risk`);
+    const configJson = JSON.stringify(config, null, 2);
+    return render(res, 'account-config', {
+      title: 'Config: ' + account.name, account, configJson,
+      flaggedInConfig, flaggedCountries: FLAGGED_COUNTRIES, riskLabels: RISK_LABELS,
+      flash: 'Saved, but config contains flagged countries: ' + warnings.join('; '),
+      flashType: 'warning',
+    });
+  }
+
   res.redirect(`/accounts/${id}/runs`);
 });
 
