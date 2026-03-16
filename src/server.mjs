@@ -127,6 +127,8 @@ app.post('/accounts/:id/config', (req, res) => {
   const account = getAccount(id);
   if (!account) return res.status(404).send('Account not found');
 
+  const flaggedLocals = { flaggedCountries: FLAGGED_COUNTRIES, riskLabels: RISK_LABELS };
+
   let config;
   try {
     config = JSON.parse(req.body.config);
@@ -135,6 +137,7 @@ app.post('/accounts/:id/config', (req, res) => {
     return render(res, 'account-config', {
       title: 'Config: ' + account.name, account, configJson,
       flash: 'Invalid JSON: ' + err.message,
+      flaggedInConfig: [], ...flaggedLocals,
     });
   }
 
@@ -144,6 +147,8 @@ app.post('/accounts/:id/config', (req, res) => {
     return render(res, 'account-config', {
       title: 'Config: ' + account.name, account, configJson,
       flash: 'Invalid config: ' + validation.errors.join('; '),
+      flaggedInConfig: checkForFlaggedCountries((config.destinations || []).map(d => d.code)),
+      ...flaggedLocals,
     });
   }
 
@@ -158,7 +163,7 @@ app.post('/accounts/:id/config', (req, res) => {
     const configJson = JSON.stringify(config, null, 2);
     return render(res, 'account-config', {
       title: 'Config: ' + account.name, account, configJson,
-      flaggedInConfig, flaggedCountries: FLAGGED_COUNTRIES, riskLabels: RISK_LABELS,
+      flaggedInConfig, ...flaggedLocals,
       flash: 'Saved, but config contains flagged countries: ' + warnings.join('; '),
       flashType: 'warning',
     });
