@@ -8,11 +8,16 @@ import { httpsGet, DEFAULT_ORIGIN_POSTAL_CODE } from './lib.mjs';
 import { fmtDate, fmtStatus } from './core/formatting.mjs';
 import { validateConfig } from './core/config/validate.mjs';
 import { checkForFlaggedCountries, FLAGGED_COUNTRIES, RISK_LABELS } from './core/flagged-countries.mjs';
+import { normalizeDbRate } from './core/rates/normalize.mjs';
+import { normalizeDbLineItem } from './core/invoices/normalize.mjs';
+import { buildAnalysisModel } from './core/analysis/model.mjs';
+import { renderHtmlReport } from './core/analysis/render-html.mjs';
 import { DEFAULT_CONFIG_PATH } from './config.mjs';
 import {
   getDb, closeDb,
   getAllAccounts, getAccount, createAccount, updateAccount, updateAccountConfig, deleteAccount,
-  createRun as dbCreateRun, getRun, deleteRun, getRunsForAccount, getRecentRuns, getAnalysisResult,
+  createRun as dbCreateRun, getRun, deleteRun, getRunsForAccount, getRecentRuns,
+  getAnalysisResult, getShippingRates, getInvoiceLineItems,
   getInvoices,
 } from './db.mjs';
 
@@ -226,8 +231,28 @@ app.get('/runs/:id', (req, res) => {
 
   let resultsHtml = null;
   if (run.status === 'completed') {
-    const result = getAnalysisResult(run.id);
-    if (result) resultsHtml = result.results_html;
+    // Regenerate report from stored data + current config so config
+    // changes (e.g. VAT toggle) take effect without re-running.
+    try {
+      const account = run.account_id ? getAccount(run.account_id) : null;
+      const config = account
+        ? validateConfig(JSON.parse(account.config))
+        : validateConfig(JSON.parse(run.config_snapshot));
+
+      if (config.ok) {
+        const rates = getShippingRates(run.id).map(normalizeDbRate);
+        const lineItems = getInvoiceLineItems(run.id).map(normalizeDbLineItem);
+        const model = buildAnalysisModel({ rates, lineItems, config: config.value, generatedAt: new Date().toISOString() });
+        resultsHtml = renderHtmlReport(model);
+      }
+    } catch {
+      // Fall back to cached report if regeneration fails
+    }
+
+    if (!resultsHtml) {
+      const result = getAnalysisResult(run.id);
+      if (result) resultsHtml = result.results_html;
+    }
   }
 
   // Check if this run has invoices
