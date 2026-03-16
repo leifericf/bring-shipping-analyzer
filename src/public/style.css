@@ -448,27 +448,64 @@ details summary:hover {
   color: var(--pico-muted-color);
 }
 
-/* Add-destination form inside <details> */
-.dest-add-form {
-  padding-top: 0.5rem;
+/* Add-country controls — tabs + panels above the country list */
+.add-country-controls {
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: var(--pico-border-radius);
+  overflow: hidden;
 }
 
-.dest-add-fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 0.75rem;
-  align-items: end;
+.add-country-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+  background: var(--pico-card-background-color);
 }
 
-.dest-add-fields label {
-  font-size: 0.85rem;
+.add-tab {
+  flex: 0 0 auto;
+  padding: 0.5rem 1.25rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font-size: 0.9rem;
   font-weight: 600;
+  color: var(--pico-muted-color);
+  cursor: pointer;
+  margin: 0;
+  border-radius: 0;
+  width: auto;
+}
+
+.add-tab:hover { color: var(--pico-color); }
+.add-tab.active {
+  color: var(--pico-primary);
+  border-bottom-color: var(--pico-primary);
+}
+
+.add-panel { display: none; padding: 1rem; }
+.add-panel.active { display: block; }
+
+/* Single country — inline row */
+.add-country-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.add-country-row input,
+.add-country-row .autocomplete-wrap {
   margin-bottom: 0;
 }
 
-.dest-add-fields input {
-  margin-bottom: 0;
-}
+.add-country-row .autocomplete-wrap { flex: 2; min-width: 160px; }
+.add-country-row .autocomplete-wrap input { margin-bottom: 0; }
+.add-country-code { width: 5rem; flex: 0 0 5rem; }
+.add-country-postal { width: 8rem; flex: 0 0 8rem; }
+.add-country-zone  { width: 5rem; flex: 0 0 5rem; }
+.add-country-desc  { flex: 1; min-width: 8rem; }
+.add-country-row button { flex: 0 0 auto; margin-bottom: 0; white-space: nowrap; }
 
 .dest-add-actions {
   margin-top: 0.75rem;

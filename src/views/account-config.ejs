@@ -6,13 +6,13 @@
 
 <hgroup>
   <h1>Configuration</h1>
-  <p><%= account.name %> &mdash; destinations, services, weight tiers, and analysis settings.</p>
+  <p><%= account.name %> &mdash; shipping countries, services, weight tiers, and analysis settings.</p>
 </hgroup>
 
 <% if (typeof flaggedInConfig !== 'undefined' && flaggedInConfig.length > 0) { %>
 <details class="flagged-warning" open>
   <summary>
-    Warning: <%= flaggedInConfig.length %> flagged countr<%= flaggedInConfig.length === 1 ? 'y' : 'ies' %> in destinations
+    Warning: <%= flaggedInConfig.length %> flagged countr<%= flaggedInConfig.length === 1 ? 'y' : 'ies' %> in shipping countries
   </summary>
   <table class="flagged-table">
     <thead><tr><th>Country</th><th>Risk</th><th>Reason</th></tr></thead>
@@ -36,56 +36,37 @@
   <!-- ------------------------------------------------------------------ -->
 
   <section id="destinations-section">
-    <h2>Destinations <span id="dest-count" class="dest-count"></span></h2>
-    <p>Add or remove shipping destinations. Each destination needs a country name, ISO country code, and postal code.</p>
+    <h2>Shipping Countries <span id="dest-count" class="dest-count"></span></h2>
+    <p>Countries your store ships to. Each country needs a name, ISO code, and representative postal code for rate lookups.</p>
 
-    <div id="dest-groups">
-      <!-- filled by JS: one <details> per region -->
-    </div>
+    <!-- Add controls — prominent, above the list -->
+    <div class="add-country-controls">
+      <div class="add-country-tabs" role="tablist">
+        <button type="button" class="add-tab active" data-panel="add-single-panel" role="tab" aria-selected="true">Single country</button>
+        <button type="button" class="add-tab" data-panel="add-region-panel" role="tab" aria-selected="false">By region</button>
+      </div>
 
-    <!-- Add single destination -->
-    <details id="add-dest-details">
-      <summary>Add destination</summary>
-      <div class="dest-add-form">
-        <div class="dest-add-fields">
-          <label>
-            Country *
-            <div class="autocomplete-wrap" role="combobox" aria-expanded="false" aria-haspopup="listbox" aria-owns="country-suggestions">
-              <input type="text" id="new-country" placeholder="Start typing..." autocomplete="off" aria-autocomplete="list" aria-controls="country-suggestions">
-              <ul class="autocomplete-list" id="country-suggestions" role="listbox" aria-label="Country suggestions"></ul>
-            </div>
-          </label>
-          <label>
-            Code *
-            <input type="text" id="new-code" placeholder="SE" maxlength="2">
-          </label>
-          <label>
-            Postal Code *
-            <input type="text" id="new-postal" placeholder="11122">
-          </label>
-          <label>
-            Zone
-            <input type="number" id="new-zone" placeholder="1" min="1">
-          </label>
-          <label>
-            Description
-            <input type="text" id="new-desc" placeholder="Stockholm">
-          </label>
-        </div>
-        <div class="dest-add-actions">
-          <button type="button" id="add-dest-btn">Add Destination</button>
+      <!-- Single country -->
+      <div id="add-single-panel" class="add-panel active" role="tabpanel">
+        <div class="add-country-row">
+          <div class="autocomplete-wrap" role="combobox" aria-expanded="false" aria-haspopup="listbox" aria-owns="country-suggestions">
+            <input type="text" id="new-country" placeholder="Country name..." autocomplete="off" aria-autocomplete="list" aria-controls="country-suggestions" aria-label="Country name">
+            <ul class="autocomplete-list" id="country-suggestions" role="listbox" aria-label="Country suggestions"></ul>
+          </div>
+          <input type="text" id="new-code" placeholder="Code" maxlength="2" aria-label="Country code" class="add-country-code">
+          <input type="text" id="new-postal" placeholder="Postal code" aria-label="Postal code" class="add-country-postal">
+          <input type="number" id="new-zone" placeholder="Zone" min="1" aria-label="Zone" class="add-country-zone">
+          <input type="text" id="new-desc" placeholder="Description" aria-label="Description" class="add-country-desc">
+          <button type="button" id="add-dest-btn">Add</button>
         </div>
         <div class="dest-add-error" id="dest-add-error"></div>
       </div>
-    </details>
 
-    <!-- Add countries by region -->
-    <details id="add-region-details">
-      <summary>Add countries by region</summary>
-      <div class="dest-add-form">
+      <!-- By region -->
+      <div id="add-region-panel" class="add-panel" role="tabpanel">
         <p class="region-help">
-          Select a region to add all its countries as destinations. Uses the capital city as postal code placeholder.
-          Countries already in your destinations list will be skipped.
+          Select a region to add all its countries. Uses the capital city as a postal code placeholder.
+          Countries already in your list will be skipped.
         </p>
         <div class="region-picker">
           <label>
@@ -133,7 +114,13 @@
         <div id="region-loading" style="display:none;" aria-busy="true">Loading countries...</div>
         <div class="dest-add-error" id="region-error"></div>
       </div>
-    </details>
+    </div>
+
+    <!-- Country list -->
+    <div id="dest-groups">
+      <!-- filled by JS: one <details> per region -->
+    </div>
+
   </section>
 
   <!-- ------------------------------------------------------------------ -->
@@ -163,7 +150,7 @@
   <details class="mt-2">
     <summary>Advanced: Raw JSON editor</summary>
     <p>
-      Edit the full JSON configuration directly. Changes here override the destinations table above.
+      Edit the full JSON configuration directly. Changes here override the country list above.
     </p>
     <textarea name="config" class="config-editor" id="config-editor" spellcheck="false"><%= configJson %></textarea>
     <div class="config-error" id="config-error"></div>
@@ -270,7 +257,7 @@ function renderDestinations() {
     } else if (allCountries.length > 0) {
       region = getSubregion(d.code) || 'Other';
     } else {
-      region = 'All destinations';
+      region = 'All countries';
     }
     if (!groups[region]) groups[region] = [];
     groups[region].push({ dest: d, index: i });
@@ -631,7 +618,7 @@ function addDest() {
   // Check for duplicate (same code + postalCode)
   const dup = config.destinations.find(d => d.code === code && d.postalCode === postal);
   if (dup) {
-    errorEl.textContent = 'Duplicate: a destination with code ' + code + ' and postal code ' + postal + ' already exists.';
+    errorEl.textContent = 'Duplicate: a country with code ' + code + ' and postal code ' + postal + ' already exists.';
     errorEl.style.display = 'block';
     return;
   }
@@ -734,6 +721,19 @@ document.getElementById('config-form').addEventListener('submit', function(e) {
     // Open the advanced section so the user can see the error
     document.querySelector('details.mt-2').open = true;
   }
+});
+
+// ---------------------------------------------------------------------------
+// Add-country tab switching
+// ---------------------------------------------------------------------------
+
+document.querySelectorAll('.add-tab').forEach(tab => {
+  tab.addEventListener('click', function () {
+    document.querySelectorAll('.add-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.add-panel').forEach(p => p.classList.remove('active'));
+    this.classList.add('active');
+    document.getElementById(this.dataset.panel).classList.add('active');
+  });
 });
 
 // ---------------------------------------------------------------------------
