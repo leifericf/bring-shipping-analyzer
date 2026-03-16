@@ -73,13 +73,34 @@ A separate tab on the run detail page for exploring pricing trade-offs:
 
 Each account has its own configuration (editable from the web UI) that controls:
 
-- **Destinations** — which countries and postal codes to check rates for, with bulk-add by region
+- **Destinations** — which countries and postal codes to check rates for, with bulk-add by region. Flagged countries are highlighted with risk warnings (see below).
 - **Weight tiers** — which weight brackets to query from the API
 - **Shipping services** — domestic and international service definitions, with per-bracket service assignment (e.g. service 3584 for 0–5 kg, service 5800 for 5–20 kg)
 - **Analysis settings** — VAT rate, zone strategy, weight bracket definitions, international zone merge threshold
 - **Zone merge threshold** — a slider controlling how aggressively international countries are merged into zones (default 10%; lower = more zones, higher = fewer zones)
 
 New accounts start with the defaults from `config.json`.
+
+### Flagged Country Warnings
+
+The app includes a built-in database of countries flagged for shipping risk (`src/core/flagged-countries.mjs`). Each flagged country has a risk level and a documented reason:
+
+| Risk | Meaning | Examples |
+|------|---------|---------|
+| **Critical** | Sanctions, active war, or failed state. Do not ship. | North Korea, Iran, Syria, Russia, Ukraine, Somalia |
+| **High** | Conflict, extreme corruption, collapsed systems. Strongly advised against. | Myanmar, Venezuela, Haiti, DR Congo, Iraq, Nigeria |
+| **Medium** | Significant instability, weak postal infrastructure, or high corruption. | Turkey, India, South Africa, Egypt, most of sub-Saharan Africa |
+| **Low** | Minor concerns: microstates, dependencies, or borderline systems. | Monaco, Greenland, Brazil, China, Australia |
+
+When editing an account's destinations:
+
+- A **warning banner** at the top of the config page lists any flagged countries currently in the config, with their risk level and reason.
+- Each flagged destination in the **destination table** shows a color-coded risk badge and the reason it was flagged.
+- **Adding a flagged country** individually triggers a confirmation dialog explaining the risk.
+- **Bulk-adding by region** leaves flagged countries unchecked by default, with risk badges visible so you can make an informed choice.
+- **Saving** a config that contains flagged countries shows a warning (but still saves — it's a warning, not a block).
+
+The flagged country list is maintained in source code. To update it, edit `src/core/flagged-countries.mjs`.
 
 ## Database
 
