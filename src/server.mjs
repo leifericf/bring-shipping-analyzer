@@ -230,10 +230,13 @@ app.post('/accounts/:id/runs', (req, res) => {
   const configPath = join(tmpdir(), `bring-config-${runId}.json`);
   fs.writeFileSync(configPath, JSON.stringify(config));
 
-  // Spawn pipeline in background
-  const child = spawn('node', [join(__dirname, 'run.mjs')], {
+  // Spawn pipeline in background.
+  // Uses process.execPath instead of 'node' so it works inside packaged
+  // Electron apps.  ELECTRON_RUN_AS_NODE=1 is harmless under plain Node.
+  const child = spawn(process.execPath, [join(__dirname, 'run.mjs')], {
     env: {
       ...process.env,
+      ELECTRON_RUN_AS_NODE: '1',
       BRING_API_UID: account.api_uid,
       BRING_API_KEY: account.api_key,
       BRING_CUSTOMER_NUMBER: account.customer_number,
@@ -366,14 +369,30 @@ app.get('/runs/:runId/invoices/:invoiceNumber/pdf', async (req, res) => {
 // Start server
 // ---------------------------------------------------------------------------
 
-// Initialize DB on startup
-getDb();
+/**
+ * Start the Express server.
+ * @param {number} [port] - Port to listen on (defaults to PORT env or 3000)
+ * @returns {Promise<{ server: import('http').Server, port: number }>}
+ */
+export function startServer(port) {
+  port = port || PORT;
+  getDb();
+  return new Promise((resolve, reject) => {
+    const server = app.listen(port, () => {
+      console.log(`\nBring Shipping Advisor — Web UI`);
+      console.log(`Running at http://localhost:${port}\n`);
+      resolve({ server, port: Number(port) });
+    });
+    server.on('error', reject);
+  });
+}
 
-app.listen(PORT, () => {
-  console.log(`\nBring Shipping Advisor — Web UI`);
-  console.log(`Running at http://localhost:${PORT}\n`);
-});
-
-// Graceful shutdown
-process.on('SIGINT', () => { closeDb(); process.exit(0); });
-process.on('SIGTERM', () => { closeDb(); process.exit(0); });
+// Auto-start when run directly (not managed by Electron)
+if (!process.env.ELECTRON_MANAGED) {
+  startServer().catch(err => {
+    console.error('Failed to start server:', err.message);
+    process.exit(1);
+  });
+  process.on('SIGINT', () => { closeDb(); process.exit(0); });
+  process.on('SIGTERM', () => { closeDb(); process.exit(0); });
+}

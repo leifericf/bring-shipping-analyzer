@@ -15,40 +15,51 @@ This tool fetches your **actual negotiated shipping rates** from the Bring (Post
 - Includes a Mix Simulator for exploring pricing trade-offs between weight tiers
 - Supports multiple Bring accounts, each with their own configuration
 
-## Setup
+## Getting API Credentials
 
-### Prerequisites
-
-- Node.js 18+
-- Bring API credentials
-
-### Getting API Credentials
+You'll need Bring API credentials regardless of how you run the app:
 
 1. Log in to [Mybring](https://www.mybring.com)
 2. Go to Account Settings → API
 3. Create an API key
 4. Note your customer number (found on invoices or in Mybring)
 
-### Installation
+## Setup
+
+### Desktop App (recommended)
+
+Download the installer for your platform from the [Releases](../../releases) page:
+
+- **macOS**: `.dmg` — open it and drag the app to Applications
+- **Windows**: `.exe` installer — run it and follow the prompts
+
+Launch the app like any other application. No terminal, no dependencies to install. Close the window when you're done.
+
+### Web Server (alternative, for developers)
+
+If you prefer running the app as a standalone web server:
+
+**Prerequisites:** Node.js 18+
 
 ```bash
-npm install
+npm install   # install dependencies (first time only)
+npm start     # start the server
 ```
+
+Open http://localhost:3000. Press `Ctrl+C` in the terminal to stop.
+
+## Getting Started
+
+Once the app is open:
+
+1. **Create an account** — click "New Account" and enter your Bring API credentials (API UID, API key, and customer number from Mybring).
+2. **Review your configuration** — the app comes with sensible defaults for destinations, weight tiers, and services. You can adjust these from the account's config page, or leave them as-is.
+3. **Start a run** — click "New Run" on your account page. The app will fetch your rates and invoices from Bring in the background (this takes a minute or two).
+4. **View your report** — once the run completes, you'll see recommended shipping rates for every zone and weight bracket, along with a profitability analysis based on your actual invoice history.
+
+From there you can refine your configuration, start new runs, or use the Mix Simulator to explore pricing trade-offs.
 
 ## Usage
-
-```bash
-npm start
-```
-
-Open http://localhost:3000. From the web UI you can:
-
-1. **Create accounts** — add API credentials for one or more Bring/Mybring customers
-2. **Edit configuration** — customize destinations, services, weight tiers, and analysis settings per account
-3. **Start runs** — fetch rates and invoices with one click (runs in background)
-4. **View results** — see the analysis report with recommended shipping rates
-5. **Simulate pricing** — use the Mix Simulator to explore tier cross-subsidization scenarios
-6. **Browse invoices** — list all invoices for a run and download individual PDFs on demand
 
 ### Report
 
@@ -71,7 +82,7 @@ A separate tab on the run detail page for exploring pricing trade-offs:
 
 ### Configuration
 
-Each account has its own configuration (editable from the web UI) that controls:
+Each account has its own configuration (editable from the app) that controls:
 
 - **Destinations** — which countries and postal codes to check rates for, with bulk-add by region. Flagged countries are highlighted with risk warnings (see below).
 - **Weight tiers** — which weight brackets to query from the API
@@ -79,11 +90,9 @@ Each account has its own configuration (editable from the web UI) that controls:
 - **Analysis settings** — VAT rate, zone strategy, weight bracket definitions, international zone merge threshold
 - **Zone merge threshold** — a slider controlling how aggressively international countries are merged into zones (default 10%; lower = more zones, higher = fewer zones)
 
-New accounts start with the defaults from `config.json`.
-
 ### Flagged Country Warnings
 
-The app includes a built-in database of countries flagged for shipping risk (`src/core/flagged-countries.mjs`). Each flagged country has a risk level and a documented reason:
+The app includes a built-in database of countries flagged for shipping risk. Each flagged country has a risk level and a documented reason:
 
 | Risk | Meaning |
 |------|---------|
@@ -100,17 +109,16 @@ When editing an account's destinations:
 - **Bulk-adding by region** leaves flagged countries unchecked by default, with risk badges visible so you can make an informed choice.
 - **Saving** a config that contains flagged countries shows a warning (but still saves — it's a warning, not a block).
 
-The flagged country list is maintained in source code. To update it, edit `src/core/flagged-countries.mjs`.
+## Your Data
 
-## Database
+All data is stored locally in a SQLite database. Nothing is sent to any server other than the Bring/Mybring APIs.
 
-All data is stored in a local SQLite database at `data/bring.db`. You can query it directly:
+- **Desktop app**: data is stored in your OS app-data folder:
+  - macOS: `~/Library/Application Support/Bring Shipping Advisor/data/`
+  - Windows: `%APPDATA%/Bring Shipping Advisor/data/`
+- **Web server mode**: data is stored in the `data/` folder next to the app.
 
-```bash
-sqlite3 data/bring.db "SELECT id, created_at, status FROM runs"
-```
-
-The database is not backed up automatically. If you want to keep a copy, just copy the `data/bring.db` file somewhere safe. That said, the app is designed around ephemeral runs — you can always re-fetch rates and invoices from the Bring API, so losing the database is not a big deal.
+The database is not backed up automatically. If you want to keep a copy, just copy the `bring.db` file somewhere safe. That said, the app is designed around ephemeral runs — you can always re-fetch rates and invoices from the Bring API, so losing the database is not a big deal.
 
 ## Notes
 
@@ -121,6 +129,45 @@ The database is not backed up automatically. If you want to keep a copy, just co
 - **Invoice history**: The Bring Invoice API only allows fetching invoices from the last 365 days. Older invoices are not available through the API.
 - **Currency**: All prices are displayed in kr (Norwegian kroner).
 - All Bring APIs used are read-only.
+
+## Development
+
+### Building the Desktop App
+
+To build the desktop app installers yourself:
+
+```bash
+npm install
+npm run desktop:dist
+```
+
+Installers are output to `dist/`. By default this builds for the current platform. To build for a specific platform:
+
+```bash
+npm run desktop:dist -- --mac    # macOS .dmg
+npm run desktop:dist -- --win    # Windows .exe installer
+```
+
+To run the Electron app directly during development:
+
+```bash
+npm run desktop:rebuild   # rebuild native modules for Electron (once)
+npm run desktop:dev       # launch the app in dev mode
+```
+
+Note: `desktop:rebuild` compiles native modules (like better-sqlite3) for Electron's Node ABI. After running it, `npm start` (web server mode) may require a fresh `npm install` to restore the standard Node.js binaries.
+
+### Project Structure
+
+New accounts start with the defaults from `config.json` in the project root. The flagged country list is maintained in `src/core/flagged-countries.mjs`.
+
+### Querying the Database Directly
+
+In web server mode, you can query the SQLite database directly:
+
+```bash
+sqlite3 data/bring.db "SELECT id, created_at, status FROM runs"
+```
 
 ## Disclaimer
 

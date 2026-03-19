@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { requireRunId, requireBringCredentials } from './lib.mjs';
@@ -28,7 +28,7 @@ for (const script of scripts) {
   updateRunStatus(RUN_ID, script.status);
 
   try {
-    execSync(`node ${join(__dirname, script.name)}`, {
+    execFileSync(process.execPath, [join(__dirname, script.name)], {
       stdio: 'inherit',
       env: process.env,
     });

@@ -3,16 +3,48 @@
   "version": "1.0.0",
   "description": "Fetch and analyze shipping rates from Bring (Posten) for Shopify stores",
   "type": "module",
+  "main": "electron/main.mjs",
   "engines": {
     "node": ">=18"
   },
   "scripts": {
     "start": "node src/server.mjs",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "desktop:dev": "electron .",
+    "desktop:rebuild": "electron-builder install-app-deps",
+    "desktop:dist": "electron-builder"
   },
   "dependencies": {
     "better-sqlite3": "^12.6.2",
     "ejs": "^4.0.1",
     "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.bring.shipping-advisor",
+    "productName": "Bring Shipping Advisor",
+    "asar": false,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "!data",
+      "!test",
+      "!dist",
+      "!.env"
+    ],
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.business"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": true
+    }
   }
 }

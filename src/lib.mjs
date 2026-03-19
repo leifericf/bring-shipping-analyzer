@@ -4,7 +4,7 @@ import { dirname, join } from 'path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ROOT_DIR = join(__dirname, '..');
-export const DATA_DIR = join(ROOT_DIR, 'data');
+export const DATA_DIR = process.env.BRING_DATA_DIR || join(ROOT_DIR, 'data');
 export const DEFAULT_ORIGIN_POSTAL_CODE = '0174';
 
 /**
