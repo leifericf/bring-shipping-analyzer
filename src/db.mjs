@@ -43,6 +43,12 @@ function initSchema() {
     _db.exec('ALTER TABLE runs ADD COLUMN account_id INTEGER REFERENCES accounts(id)');
   }
 
+  // Migrate: add is_demo_account column to accounts if it doesn't exist
+  const accountsColumns = _db.prepare("PRAGMA table_info(accounts)").all();
+  if (accountsColumns.length > 0 && !accountsColumns.find(c => c.name === 'is_demo_account')) {
+    _db.exec('ALTER TABLE accounts ADD COLUMN is_demo_account INTEGER NOT NULL DEFAULT 0');
+  }
+
   // Migrate: rename results_markdown to results_html (for existing DBs)
   const analysisColumns = _db.prepare("PRAGMA table_info(analysis_results)").all();
   if (analysisColumns.length > 0 && analysisColumns.find(c => c.name === 'results_markdown')) {
@@ -58,6 +64,7 @@ function initSchema() {
       customer_number    TEXT NOT NULL,
       origin_postal_code TEXT NOT NULL DEFAULT '0174',
       config             TEXT NOT NULL,
+      is_demo_account    INTEGER NOT NULL DEFAULT 0,
       created_at         TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -144,8 +151,9 @@ function initSchema() {
 // Account helpers
 // ---------------------------------------------------------------------------
 
-export function getAllAccounts() {
+export function getAllAccounts({ demoOnly = false } = {}) {
   const db = getDb();
+  if (demoOnly) return db.prepare('SELECT * FROM accounts WHERE is_demo_account = 1 ORDER BY name').all();
   return db.prepare('SELECT * FROM accounts ORDER BY name').all();
 }
 
@@ -175,6 +183,11 @@ export function updateAccount(id, name, apiUid, apiKey, customerNumber, originPo
 export function updateAccountConfig(id, config) {
   const db = getDb();
   db.prepare('UPDATE accounts SET config = ? WHERE id = ?').run(JSON.stringify(config), id);
+}
+
+export function setAccountDemoFlag(id, enabled) {
+  const db = getDb();
+  db.prepare('UPDATE accounts SET is_demo_account = ? WHERE id = ?').run(enabled ? 1 : 0, id);
 }
 
 // Tables with a run_id foreign key, in deletion order.
@@ -238,8 +251,17 @@ export function getRunsForAccount(accountId) {
   return db.prepare('SELECT * FROM runs WHERE account_id = ? ORDER BY created_at DESC').all(accountId);
 }
 
-export function getRecentRuns(limit = 20) {
+export function getRecentRuns(limit = 20, { demoOnly = false } = {}) {
   const db = getDb();
+  if (demoOnly) {
+    return db.prepare(`
+      SELECT r.*, a.name as account_name
+      FROM runs r
+      JOIN accounts a ON r.account_id = a.id AND a.is_demo_account = 1
+      ORDER BY r.created_at DESC
+      LIMIT ?
+    `).all(limit);
+  }
   return db.prepare(`
     SELECT r.*, a.name as account_name
     FROM runs r

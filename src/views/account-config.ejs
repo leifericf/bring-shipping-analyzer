@@ -158,6 +158,23 @@
     </div>
   </details>
 
+  <!-- ------------------------------------------------------------------ -->
+  <!-- Demo mode                                                           -->
+  <!-- ------------------------------------------------------------------ -->
+
+  <section>
+    <h2>Demo Mode</h2>
+    <form method="POST" action="/accounts/<%= account.id %>/<%= account.is_demo_account ? 'unmark-demo' : 'mark-demo' %>" class="demo-config-form">
+      <label>
+        <input type="checkbox" role="switch" onchange="this.form.submit()" <%= account.is_demo_account ? 'checked' : '' %>>
+        Include this account in demo mode
+      </label>
+    </form>
+    <p class="help-text">
+      When demo mode is active, only accounts with this setting enabled are shown on the dashboard.
+    </p>
+  </section>
+
   <div class="form-actions">
     <button type="submit">Save Configuration</button>
     <a href="/accounts/<%= account.id %>/runs" class="secondary">Back to Runs</a>

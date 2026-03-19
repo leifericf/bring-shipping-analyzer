@@ -32,6 +32,11 @@
 
   <footer class="container">
     <small>Bring Shipping Advisor</small>
+    <% if (typeof demoMode !== 'undefined' && demoMode) { %>
+      <form method="POST" action="/demo-mode/disable" class="demo-footer-form"><button type="submit" class="demo-footer-btn">exit demo mode</button></form>
+    <% } else { %>
+      <form method="POST" action="/demo-mode/enable" class="demo-footer-form"><button type="submit" class="demo-footer-btn">enter demo mode</button></form>
+    <% } %>
   </footer>
 </body>
 </html>

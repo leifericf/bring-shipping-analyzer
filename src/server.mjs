@@ -15,7 +15,7 @@ import { renderHtmlReport } from './core/analysis/render-html.mjs';
 import { DEFAULT_CONFIG_PATH } from './config.mjs';
 import {
   getDb, closeDb,
-  getAllAccounts, getAccount, createAccount, updateAccount, updateAccountConfig, deleteAccount,
+  getAllAccounts, getAccount, createAccount, updateAccount, updateAccountConfig, deleteAccount, setAccountDemoFlag,
   createRun as dbCreateRun, getRun, deleteRun, getRunsForAccount, getRecentRuns,
   getAnalysisResult, getShippingRates, getInvoiceLineItems,
   getInvoices,
@@ -34,11 +34,25 @@ app.set('views', join(__dirname, 'views'));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(express.static(join(__dirname, 'public')));
 
+// Lightweight cookie parsing (no extra dependency)
+app.use((req, _res, next) => {
+  req.cookies = {};
+  const header = req.headers.cookie;
+  if (header) {
+    for (const pair of header.split(';')) {
+      const [k, ...v] = pair.trim().split('=');
+      if (k) req.cookies[k.trim()] = decodeURIComponent(v.join('='));
+    }
+  }
+  next();
+});
+
 /**
  * Render a view inside the layout.
  */
 function render(res, view, locals = {}) {
-  const allLocals = { ...locals, fmtDate, fmtStatus, currentPath: res.req.path };
+  const demoMode = res.req.cookies?.demo_mode === '1';
+  const allLocals = { ...locals, fmtDate, fmtStatus, currentPath: res.req.path, demoMode };
   res.render(view, allLocals, (err, body) => {
     if (err) { console.error(err); return res.status(500).send('Render error'); }
     res.render('layout', { ...allLocals, body });
@@ -71,9 +85,32 @@ function getDefaultConfig() {
 // ---------------------------------------------------------------------------
 
 app.get('/', (req, res) => {
-  const accounts = getAllAccounts();
-  const recentRuns = getRecentRuns(20);
-  render(res, 'dashboard', { title: 'Dashboard', accounts, recentRuns });
+  const demoMode = req.cookies.demo_mode === '1';
+  const accounts = getAllAccounts({ demoOnly: demoMode });
+  const recentRuns = getRecentRuns(20, { demoOnly: demoMode });
+  render(res, 'dashboard', { title: 'Dashboard', accounts, recentRuns, demoMode });
+});
+
+app.post('/demo-mode/enable', (_req, res) => {
+  res.cookie('demo_mode', '1', { httpOnly: true, sameSite: 'lax' });
+  res.redirect('/');
+});
+
+app.post('/demo-mode/disable', (_req, res) => {
+  res.clearCookie('demo_mode');
+  res.redirect('/');
+});
+
+app.post('/accounts/:id/mark-demo', (req, res) => {
+  const id = Number(req.params.id);
+  setAccountDemoFlag(id, true);
+  res.redirect(req.headers.referer || `/accounts/${id}/config`);
+});
+
+app.post('/accounts/:id/unmark-demo', (req, res) => {
+  const id = Number(req.params.id);
+  setAccountDemoFlag(id, false);
+  res.redirect(req.headers.referer || `/accounts/${id}/config`);
 });
 
 // ---------------------------------------------------------------------------

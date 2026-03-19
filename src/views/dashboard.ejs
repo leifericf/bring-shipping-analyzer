@@ -8,9 +8,15 @@
 
   <% if (accounts.length === 0) { %>
     <div class="empty-state">
-      <div class="empty-icon">&#x1f4e6;</div>
-      <p>No accounts yet.</p>
-      <a href="/accounts/new" role="button">Create your first account</a>
+      <% if (demoMode) { %>
+        <div class="empty-icon">&#x1f4f7;</div>
+        <p>No accounts marked for demo mode.</p>
+        <p>Exit demo mode and mark accounts with "Include in demo".</p>
+      <% } else { %>
+        <div class="empty-icon">&#x1f4e6;</div>
+        <p>No accounts yet.</p>
+        <a href="/accounts/new" role="button">Create your first account</a>
+      <% } %>
     </div>
   <% } else { %>
     <div class="account-grid">
